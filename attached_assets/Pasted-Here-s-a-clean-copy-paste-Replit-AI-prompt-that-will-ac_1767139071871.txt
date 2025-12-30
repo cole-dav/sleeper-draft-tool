@@ -1,0 +1,73 @@
+Here’s a **clean, copy-paste Replit AI prompt** that will actually get you something usable. I’m being explicit because vague prompts produce junk.
+
+---
+
+**Replit Prompt:**
+
+Build a full-stack web app that visualizes **future dynasty fantasy football draft picks** using the **Sleeper API**.
+
+### Core Functionality
+
+1. **Input**
+
+   * User enters a **Sleeper League ID**
+   * Optional: user selects a future year (default = next 3 rookie drafts)
+
+2. **Data Fetching**
+
+   * Fetch league data, rosters, users, and traded draft picks from the Sleeper API
+   * Correctly resolve **traded picks** so each future pick is attached to the **current owning team**, not the original team
+
+3. **Draft Pick Visualization**
+
+   * Display future draft picks in a **grid/table by round and year**
+   * Each pick should show:
+
+     * Pick slot (e.g. 2026 1.04)
+     * Current owner
+     * Original owner (if traded)
+   * Allow users to **manually override / type an anticipated pick number** (e.g. change “Mid 1st” → “1.03”) and update the display dynamically
+
+4. **Team Need Ranking**
+
+   * Pull **KeepTradeCut (KTC) player values** (use mock/static JSON if scraping is required)
+   * Aggregate roster values by position (QB / RB / WR / TE)
+   * Rank **team needs** based on lowest positional value relative to league average
+   * Display team needs next to each team (e.g. “High RB Need”, “Low WR Need”)
+
+5. **UX / UI**
+
+   * Clean, modern UI (Tailwind or simple CSS)
+   * Teams color-coded consistently
+   * Editable pick slots should update without page reload
+   * Mobile-friendly layout
+
+### Tech Stack
+
+* Frontend: React (preferred) or vanilla JS
+* Backend: Node.js (Express or serverless)
+* Styling: Tailwind CSS
+* Data fetching via REST (Sleeper API)
+* State management for edited pick slots
+
+### Edge Cases to Handle
+
+* Multiple trades on the same pick
+* Orphan teams / renamed teams
+* Leagues without future picks traded
+* Superflex vs 1QB leagues (detect via Sleeper settings)
+
+### Output
+
+* A working web app running in Replit
+* Clear comments explaining how Sleeper picks are resolved
+* Mock KTC data if live access is unavailable
+* README explaining how to extend KTC integration later
+
+---
+
+If you want, next I can:
+
+* Tighten this into a **single-file MVP**
+* Help you **model the pick-trade resolution logic**
+* Or redesign this as a **public shareable league analyzer** instead of a private tool
