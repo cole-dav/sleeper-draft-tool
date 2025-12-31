@@ -13,6 +13,8 @@ export default function Dashboard() {
   const leagueId = params.id!;
   const { data, isLoading, error, refetch } = useLeague(leagueId);
   const [selectedSeasons, setSelectedSeasons] = useState<Set<string>>(new Set());
+  const [draggedPick, setDraggedPick] = useState<any>(null);
+  const [pickSwaps, setPickSwaps] = useState<Map<number, number>>(new Map()); // Map of original rosterId -> swapped rosterId
 
   if (isLoading) return <DashboardSkeleton />;
   
@@ -56,6 +58,9 @@ export default function Dashboard() {
   // Extract unique seasons and sort
   const seasons = Array.from(new Set(picks.map(p => p.season))).sort();
 
+  // Get teams in draft order (1-8)
+  const teamsInOrder = rosters.slice().sort((a, b) => a.rosterId - b.rosterId);
+
   // Organize picks by season -> round -> picks (sorted by ownerId/position in round)
   const picksBySeasonAndRound = new Map<string, Map<number, typeof picks>>();
   
@@ -73,6 +78,32 @@ export default function Dashboard() {
     
     picksBySeasonAndRound.set(season, roundMap);
   });
+
+  const handlePickDragStart = (pick: typeof picks[0]) => {
+    setDraggedPick(pick);
+  };
+
+  const handlePickDrop = (targetRosterId: number) => {
+    if (!draggedPick || draggedPick.ownerId === targetRosterId) {
+      setDraggedPick(null);
+      return;
+    }
+
+    // Swap the two picks
+    const newSwaps = new Map(pickSwaps);
+    const draggedOriginal = draggedPick.rosterId;
+    const targetOriginal = rosters.find(r => r.rosterId === targetRosterId)?.rosterId || targetRosterId;
+
+    // If already swapped, track the swap state
+    const draggedTarget = newSwaps.get(draggedOriginal) || draggedOriginal;
+    const targetTarget = newSwaps.get(targetOriginal) || targetOriginal;
+
+    newSwaps.set(draggedOriginal, targetTarget);
+    newSwaps.set(targetOriginal, draggedTarget);
+
+    setPickSwaps(newSwaps);
+    setDraggedPick(null);
+  };
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -169,11 +200,27 @@ export default function Dashboard() {
                           <thead>
                             <tr className="bg-secondary/50 border-b border-white/5">
                               <th className="p-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider w-20 sticky left-0 bg-card z-10">Round</th>
-                              {Array.from({ length: 8 }).map((_, i) => (
-                                <th key={i} className="p-3 text-center text-xs font-bold text-muted-foreground uppercase tracking-wider min-w-32">
-                                  Pick {i + 1}
-                                </th>
-                              ))}
+                              {teamsInOrder.map((team) => {
+                                const teamUser = getUser(team.ownerId);
+                                return (
+                                  <th key={team.rosterId} className="p-3 text-center text-xs font-bold uppercase tracking-wider min-w-32 border-r border-white/5 last:border-r-0">
+                                    <div className="flex flex-col items-center gap-1">
+                                      {teamUser?.avatar ? (
+                                        <img 
+                                          src={`https://sleepercdn.com/avatars/thumbs/${teamUser.avatar}`} 
+                                          alt={teamUser.displayName}
+                                          className="w-6 h-6 rounded-full"
+                                        />
+                                      ) : (
+                                        <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">
+                                          {teamUser?.displayName?.[0]}
+                                        </div>
+                                      )}
+                                      <span className="text-[10px] text-muted-foreground">{teamUser?.displayName?.split(' ')[0] || 'Team'}</span>
+                                    </div>
+                                  </th>
+                                );
+                              })}
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-white/5">
@@ -185,47 +232,46 @@ export default function Dashboard() {
                                   <td className="p-3 sticky left-0 bg-card hover:bg-card/95 transition-colors border-r border-white/5 z-10 font-bold text-sm text-foreground font-mono">
                                     Rd {round}
                                   </td>
-                                  {roundPicks.map((pick, index) => {
-                                    const currentOwner = getUserByRosterId(pick.ownerId);
-                                    const originalRoster = getRosterById(pick.rosterId);
-                                    const originalOwner = getUser(originalRoster?.ownerId);
-                                    const isTransferred = pick.previousOwnerId && pick.previousOwnerId !== pick.ownerId;
+                                  {teamsInOrder.map((team) => {
+                                    const pickForTeam = roundPicks.find(p => p.ownerId === team.rosterId);
+                                    const isDragging = draggedPick?.id === pickForTeam?.id;
                                     
                                     return (
-                                      <td key={pick.id} className="p-2 text-center align-top">
-                                        <div 
-                                          className={`
-                                            p-2 rounded-lg border transition-all text-xs
-                                            ${isTransferred 
-                                              ? "bg-accent/15 border-accent/40" 
-                                              : "bg-secondary/40 border-white/5"}
-                                            hover:border-white/20 hover:shadow-lg
-                                          `}
-                                        >
-                                          <div className="space-y-1">
-                                            <div className="flex items-center justify-center gap-1">
-                                              {currentOwner?.avatar ? (
-                                                <img 
-                                                  src={`https://sleepercdn.com/avatars/thumbs/${currentOwner.avatar}`} 
-                                                  alt={currentOwner.displayName}
-                                                  className="w-4 h-4 rounded-full"
-                                                />
-                                              ) : (
-                                                <div className="w-4 h-4 rounded-full bg-secondary flex items-center justify-center text-[10px] font-bold">
-                                                  {currentOwner?.displayName?.[0]}
+                                      <td 
+                                        key={`${round}-team${team.rosterId}`} 
+                                        className="p-2 text-center align-top border-r border-white/5 last:border-r-0 min-h-24"
+                                        onDragOver={(e) => e.preventDefault()}
+                                        onDrop={() => pickForTeam && handlePickDrop(team.rosterId)}
+                                      >
+                                        {pickForTeam ? (
+                                          <div 
+                                            draggable
+                                            onDragStart={() => handlePickDragStart(pickForTeam)}
+                                            className={`
+                                              p-2 rounded-lg border transition-all text-xs cursor-grab active:cursor-grabbing
+                                              ${isDragging ? "opacity-50" : ""}
+                                              ${pickForTeam.previousOwnerId && pickForTeam.previousOwnerId !== pickForTeam.ownerId
+                                                ? "bg-accent/15 border-accent/40" 
+                                                : "bg-secondary/40 border-white/5"}
+                                              hover:border-white/20 hover:shadow-lg hover:scale-105
+                                            `}
+                                          >
+                                            <div className="space-y-1">
+                                              <div className="font-mono text-[10px] text-muted-foreground">
+                                                {season} R{round}
+                                              </div>
+                                              {pickForTeam.previousOwnerId && pickForTeam.previousOwnerId !== pickForTeam.ownerId && (
+                                                <div className="text-[10px] text-accent-foreground/80">
+                                                  traded
                                                 </div>
                                               )}
                                             </div>
-                                            <div className="font-semibold text-xs text-foreground truncate">
-                                              {currentOwner?.displayName?.split(' ')[0] || 'Unknown'}
-                                            </div>
-                                            {isTransferred && originalOwner && (
-                                              <div className="text-[10px] text-accent-foreground/70">
-                                                from {originalOwner.displayName?.split(' ')[0]}
-                                              </div>
-                                            )}
                                           </div>
-                                        </div>
+                                        ) : (
+                                          <div className="h-8 flex items-center justify-center text-xs text-muted-foreground/30">
+                                            -
+                                          </div>
+                                        )}
                                       </td>
                                     );
                                   })}
