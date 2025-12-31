@@ -1,38 +1,127 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import {
+  leagues, rosters, users, draftPicks,
+  type League, type Roster, type User, type DraftPick, type UpdateDraftPick,
+  type InsertLeague, type InsertRoster, type InsertUser, type InsertDraftPick
+} from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // League
+  getLeague(leagueId: string): Promise<League | undefined>;
+  upsertLeague(league: InsertLeague): Promise<League>;
+
+  // Rosters
+  getRosters(leagueId: string): Promise<Roster[]>;
+  upsertRoster(roster: InsertRoster): Promise<Roster>;
+  upsertRosters(rostersList: InsertRoster[]): Promise<Roster[]>;
+
+  // Users
+  getUsers(leagueId: string): Promise<User[]>;
+  upsertUser(user: InsertUser): Promise<User>;
+  upsertUsers(usersList: InsertUser[]): Promise<User[]>;
+
+  // Picks
+  getPicks(leagueId: string): Promise<DraftPick[]>;
+  upsertPick(pick: InsertDraftPick): Promise<DraftPick>;
+  upsertPicks(picksList: InsertDraftPick[]): Promise<DraftPick[]>;
+  updatePick(id: number, update: UpdateDraftPick): Promise<DraftPick | undefined>;
+  
+  // Clear existing picks for a league to avoid duplicates during re-fetch
+  clearPicks(leagueId: string): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
+export class DatabaseStorage implements IStorage {
+  async getLeague(leagueId: string): Promise<League | undefined> {
+    const [league] = await db.select().from(leagues).where(eq(leagues.leagueId, leagueId));
+    return league;
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async upsertLeague(league: InsertLeague): Promise<League> {
+    const [result] = await db.insert(leagues).values(league)
+      .onConflictDoUpdate({ target: leagues.leagueId, set: league })
+      .returning();
+    return result;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async getRosters(leagueId: string): Promise<Roster[]> {
+    return db.select().from(rosters).where(eq(rosters.leagueId, leagueId));
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async upsertRoster(roster: InsertRoster): Promise<Roster> {
+    // We assume rosterId + leagueId is unique logic, but we only have a surrogate key 'id'.
+    // We should check if it exists first or use a unique constraint if we added one. 
+    // For simplicity, we'll delete matching roster first or find it.
+    // Ideally we should have a composite key on leagueId + rosterId in schema, but we defined 'id' serial.
+    // Let's find by rosterId + leagueId first.
+    const [existing] = await db.select().from(rosters).where(and(eq(rosters.leagueId, roster.leagueId), eq(rosters.rosterId, roster.rosterId)));
+    
+    if (existing) {
+      const [updated] = await db.update(rosters).set(roster).where(eq(rosters.id, existing.id)).returning();
+      return updated;
+    } else {
+      const [inserted] = await db.insert(rosters).values(roster).returning();
+      return inserted;
+    }
+  }
+
+  async upsertRosters(rostersList: InsertRoster[]): Promise<Roster[]> {
+    // This is slow but safe given our schema limitations.
+    const results = [];
+    for (const r of rostersList) {
+      results.push(await this.upsertRoster(r));
+    }
+    return results;
+  }
+
+  async getUsers(leagueId: string): Promise<User[]> {
+    return db.select().from(users).where(eq(users.leagueId, leagueId));
+  }
+
+  async upsertUser(user: InsertUser): Promise<User> {
+    const [result] = await db.insert(users).values(user)
+      .onConflictDoUpdate({ target: users.userId, set: user })
+      .returning();
+    return result;
+  }
+
+  async upsertUsers(usersList: InsertUser[]): Promise<User[]> {
+    // Can do bulk upsert with ON CONFLICT if the array isn't too huge
+    if (usersList.length === 0) return [];
+    return db.insert(users).values(usersList)
+      .onConflictDoUpdate({ target: users.userId, set: { 
+        displayName: sql`excluded.display_name`,
+        avatar: sql`excluded.avatar`,
+        leagueId: sql`excluded.league_id`
+      }})
+      .returning();
+  }
+
+  async getPicks(leagueId: string): Promise<DraftPick[]> {
+    return db.select().from(draftPicks).where(eq(draftPicks.leagueId, leagueId));
+  }
+
+  async clearPicks(leagueId: string): Promise<void> {
+    await db.delete(draftPicks).where(eq(draftPicks.leagueId, leagueId));
+  }
+
+  async upsertPick(pick: InsertDraftPick): Promise<DraftPick> {
+    const [result] = await db.insert(draftPicks).values(pick).returning();
+    return result;
+  }
+
+  async upsertPicks(picksList: InsertDraftPick[]): Promise<DraftPick[]> {
+    if (picksList.length === 0) return [];
+    return db.insert(draftPicks).values(picksList).returning();
+  }
+
+  async updatePick(id: number, update: UpdateDraftPick): Promise<DraftPick | undefined> {
+    const [result] = await db.update(draftPicks).set(update).where(eq(draftPicks.id, id)).returning();
+    return result;
   }
 }
 
-export const storage = new MemStorage();
+// Helper sql import needed for the upsertUsers sql`excluded...`
+import { sql } from "drizzle-orm";
+
+export const storage = new DatabaseStorage();

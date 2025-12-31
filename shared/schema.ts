@@ -1,18 +1,65 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, jsonb, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Store league metadata
+export const leagues = pgTable("leagues", {
+  leagueId: text("league_id").primaryKey(),
+  name: text("name").notNull(),
+  totalRosters: integer("total_rosters").notNull(),
+  season: text("season").notNull(),
+  avatar: text("avatar"),
+  settings: jsonb("settings").notNull(), // Store draft rounds, etc.
+});
+
+// Store roster information (team owners)
+export const rosters = pgTable("rosters", {
+  id: serial("id").primaryKey(),
+  leagueId: text("league_id").notNull(),
+  rosterId: integer("roster_id").notNull(), // 1, 2, 3...
+  ownerId: text("owner_id"), // Sleeper user ID
+  settings: jsonb("settings"), // Wins, losses, fpts, etc.
+});
+
+// Store user details (for display names, avatars)
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  userId: text("user_id").primaryKey(),
+  leagueId: text("league_id").notNull(),
+  displayName: text("display_name").notNull(),
+  avatar: text("avatar"),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+// Store resolved draft picks (both original and traded)
+export const draftPicks = pgTable("draft_picks", {
+  id: serial("id").primaryKey(),
+  leagueId: text("league_id").notNull(),
+  season: text("season").notNull(),
+  round: integer("round").notNull(),
+  rosterId: integer("roster_id").notNull(), // Original owner roster ID (determines pick slot usually)
+  ownerId: integer("owner_id").notNull(), // Current owner roster ID
+  previousOwnerId: integer("previous_owner_id"), // Who traded it (if applicable)
+  pickSlot: text("pick_slot"), // User manual override (e.g. "1.01", "Early 1st")
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
+// Zod Schemas
+export const insertLeagueSchema = createInsertSchema(leagues);
+export const insertRosterSchema = createInsertSchema(rosters);
+export const insertUserSchema = createInsertSchema(users);
+export const insertDraftPickSchema = createInsertSchema(draftPicks).omit({ id: true });
+export const updateDraftPickSchema = createInsertSchema(draftPicks).pick({ pickSlot: true });
+
+// Types
+export type League = typeof leagues.$inferSelect;
+export type Roster = typeof rosters.$inferSelect;
 export type User = typeof users.$inferSelect;
+export type DraftPick = typeof draftPicks.$inferSelect;
+export type UpdateDraftPick = z.infer<typeof updateDraftPickSchema>;
+
+// API Response Types
+export type LeagueDataResponse = {
+  league: League;
+  rosters: Roster[];
+  users: User[];
+  picks: DraftPick[];
+  teamNeeds: Record<number, { position: string; score: number }[]>; // rosterId -> needs
+};
