@@ -4,7 +4,7 @@ import { PickCard } from "@/components/PickCard";
 import { TeamNeedsCard } from "@/components/TeamNeedsCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, RefreshCw, Trophy, Calendar, Users, Grid, List } from "lucide-react";
+import { ArrowLeft, RefreshCw, Trophy, Calendar, Users } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState } from "react";
 
@@ -12,7 +12,7 @@ export default function Dashboard() {
   const params = useParams();
   const leagueId = params.id!;
   const { data, isLoading, error, refetch } = useLeague(leagueId);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [selectedSeasons, setSelectedSeasons] = useState<Set<string>>(new Set());
 
   if (isLoading) return <DashboardSkeleton />;
   
@@ -31,6 +31,22 @@ export default function Dashboard() {
   );
 
   const { league, rosters, users, picks, teamNeeds } = data;
+  
+  // Initialize selectedSeasons on first load
+  if (selectedSeasons.size === 0) {
+    const allSeasons = Array.from(new Set(picks.map(p => p.season))).sort();
+    setSelectedSeasons(new Set(allSeasons));
+  }
+  
+  const toggleSeason = (season: string) => {
+    const newSeasons = new Set(selectedSeasons);
+    if (newSeasons.has(season)) {
+      newSeasons.delete(season);
+    } else {
+      newSeasons.add(season);
+    }
+    setSelectedSeasons(newSeasons);
+  };
 
   // Helper to find user for roster
   const getUser = (ownerId: string | null) => users.find(u => u.userId === ownerId);
@@ -93,24 +109,6 @@ export default function Dashboard() {
             </div>
             
             <div className="flex items-center gap-2">
-              <div className="bg-secondary/30 p-1 rounded-lg flex mr-2">
-                <Button 
-                  variant={viewMode === 'grid' ? "secondary" : "ghost"} 
-                  size="sm" 
-                  onClick={() => setViewMode('grid')}
-                  className="h-8 w-8 p-0"
-                >
-                  <Grid className="w-4 h-4" />
-                </Button>
-                <Button 
-                  variant={viewMode === 'list' ? "secondary" : "ghost"} 
-                  size="sm" 
-                  onClick={() => setViewMode('list')}
-                  className="h-8 w-8 p-0"
-                >
-                  <List className="w-4 h-4" />
-                </Button>
-              </div>
               <Button onClick={() => refetch()} variant="outline" size="sm" className="gap-2 border-primary/20 hover:bg-primary/10 text-primary">
                 <RefreshCw className="h-4 w-4" />
                 Sync
@@ -142,17 +140,6 @@ export default function Dashboard() {
 
         {/* Draft Board View */}
         <section className="animate-in" style={{ animationDelay: '0.2s' }}>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-white">Draft Board</h2>
-            <div className="flex gap-2">
-              {seasons.map(season => (
-                <span key={season} className="px-3 py-1 rounded-full bg-secondary/50 text-xs font-mono text-muted-foreground border border-white/5">
-                  {season}
-                </span>
-              ))}
-            </div>
-          </div>
-
           <div className="space-y-6">
             {seasons.map(season => {
               const roundMap = picksBySeasonAndRound.get(season);
@@ -160,73 +147,96 @@ export default function Dashboard() {
               
               return (
                 <div key={season} className="space-y-4">
-                  <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-primary" />
-                    {season} Draft
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-primary" />
+                      {season} Draft
+                    </h3>
+                    <Button
+                      onClick={() => toggleSeason(season)}
+                      variant={selectedSeasons.has(season) ? "default" : "outline"}
+                      size="sm"
+                      className="font-mono"
+                    >
+                      {season}
+                    </Button>
+                  </div>
                   
-                  {rounds.map(round => {
-                    const roundPicks = roundMap?.get(round) || [];
-                    
-                    return (
-                      <div key={`${season}-r${round}`} className="bg-card/30 border border-white/5 rounded-xl overflow-hidden">
-                        <div className="bg-secondary/50 border-b border-white/5 px-6 py-3">
-                          <h4 className="font-bold text-sm text-foreground font-mono">Round {round}</h4>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-6">
-                          {roundPicks.map((pick, index) => {
-                            const currentOwner = getUserByRosterId(pick.ownerId);
-                            const originalRoster = getRosterById(pick.rosterId);
-                            const originalOwner = getUser(originalRoster?.ownerId);
-                            const isTransferred = pick.previousOwnerId && pick.previousOwnerId !== pick.ownerId;
-                            
-                            return (
-                              <div 
-                                key={pick.id} 
-                                className={`
-                                  p-4 rounded-lg border transition-all
-                                  ${isTransferred 
-                                    ? "bg-accent/15 border-accent/40 shadow-sm" 
-                                    : "bg-secondary/40 border-white/5"}
-                                  hover:border-white/20 hover:shadow-lg
-                                `}
-                              >
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    {currentOwner?.avatar ? (
-                                      <img 
-                                        src={`https://sleepercdn.com/avatars/thumbs/${currentOwner.avatar}`} 
-                                        alt={currentOwner.displayName}
-                                        className="w-6 h-6 rounded-full"
-                                      />
-                                    ) : (
-                                      <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">
-                                        {currentOwner?.displayName?.[0]}
-                                      </div>
-                                    )}
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-xs font-mono text-muted-foreground">Pick {index + 1}</div>
-                                      <div className="font-semibold text-sm text-foreground truncate">{currentOwner?.displayName || 'Unknown'}</div>
-                                    </div>
-                                  </div>
-                                  
-                                  {isTransferred && originalOwner && (
-                                    <div className="text-xs text-accent-foreground/80 pl-8 border-l border-accent/30 ml-1">
-                                      <span className="opacity-70">from </span>
-                                      <span className="font-medium">{originalOwner.displayName}</span>
-                                    </div>
-                                  )}
-                                  
-                                  <PickCard pick={pick} originalOwnerName={originalOwner?.displayName} />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                  {selectedSeasons.has(season) && (
+                    <div className="bg-card/30 border border-white/5 rounded-xl overflow-x-auto">
+                      <div className="inline-block min-w-full">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="bg-secondary/50 border-b border-white/5">
+                              <th className="p-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider w-20 sticky left-0 bg-card z-10">Round</th>
+                              {Array.from({ length: 8 }).map((_, i) => (
+                                <th key={i} className="p-3 text-center text-xs font-bold text-muted-foreground uppercase tracking-wider min-w-32">
+                                  Pick {i + 1}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-white/5">
+                            {rounds.map(round => {
+                              const roundPicks = roundMap?.get(round) || [];
+                              
+                              return (
+                                <tr key={`${season}-r${round}`} className="hover:bg-white/[0.02] transition-colors">
+                                  <td className="p-3 sticky left-0 bg-card hover:bg-card/95 transition-colors border-r border-white/5 z-10 font-bold text-sm text-foreground font-mono">
+                                    Rd {round}
+                                  </td>
+                                  {roundPicks.map((pick, index) => {
+                                    const currentOwner = getUserByRosterId(pick.ownerId);
+                                    const originalRoster = getRosterById(pick.rosterId);
+                                    const originalOwner = getUser(originalRoster?.ownerId);
+                                    const isTransferred = pick.previousOwnerId && pick.previousOwnerId !== pick.ownerId;
+                                    
+                                    return (
+                                      <td key={pick.id} className="p-2 text-center align-top">
+                                        <div 
+                                          className={`
+                                            p-2 rounded-lg border transition-all text-xs
+                                            ${isTransferred 
+                                              ? "bg-accent/15 border-accent/40" 
+                                              : "bg-secondary/40 border-white/5"}
+                                            hover:border-white/20 hover:shadow-lg
+                                          `}
+                                        >
+                                          <div className="space-y-1">
+                                            <div className="flex items-center justify-center gap-1">
+                                              {currentOwner?.avatar ? (
+                                                <img 
+                                                  src={`https://sleepercdn.com/avatars/thumbs/${currentOwner.avatar}`} 
+                                                  alt={currentOwner.displayName}
+                                                  className="w-4 h-4 rounded-full"
+                                                />
+                                              ) : (
+                                                <div className="w-4 h-4 rounded-full bg-secondary flex items-center justify-center text-[10px] font-bold">
+                                                  {currentOwner?.displayName?.[0]}
+                                                </div>
+                                              )}
+                                            </div>
+                                            <div className="font-semibold text-xs text-foreground truncate">
+                                              {currentOwner?.displayName?.split(' ')[0] || 'Unknown'}
+                                            </div>
+                                            {isTransferred && originalOwner && (
+                                              <div className="text-[10px] text-accent-foreground/70">
+                                                from {originalOwner.displayName?.split(' ')[0]}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
-                    );
-                  })}
+                    </div>
+                  )}
                 </div>
               );
             })}
