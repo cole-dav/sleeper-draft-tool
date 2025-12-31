@@ -34,30 +34,29 @@ export default function Dashboard() {
 
   // Helper to find user for roster
   const getUser = (ownerId: string | null) => users.find(u => u.userId === ownerId);
-  const getRosterName = (roster: typeof rosters[0]) => {
-    const user = getUser(roster.ownerId);
-    return user?.displayName || `Roster ${roster.rosterId}`;
-  };
-
-  // Organize picks: rosterId -> season -> picks[]
-  const picksMap = new Map<number, Map<string, typeof picks>>();
-  
-  rosters.forEach(r => {
-    picksMap.set(r.rosterId, new Map());
-  });
-
-  picks.forEach(pick => {
-    const ownerPicks = picksMap.get(pick.ownerId);
-    if (ownerPicks) {
-      if (!ownerPicks.has(pick.season)) {
-        ownerPicks.set(pick.season, []);
-      }
-      ownerPicks.get(pick.season)!.push(pick);
-    }
-  });
+  const getRosterById = (rosterId: number) => rosters.find(r => r.rosterId === rosterId);
+  const getUserByRosterId = (rosterId: number) => getUser(getRosterById(rosterId)?.ownerId || null);
 
   // Extract unique seasons and sort
   const seasons = Array.from(new Set(picks.map(p => p.season))).sort();
+
+  // Organize picks by season -> round -> picks (sorted by ownerId/position in round)
+  const picksBySeasonAndRound = new Map<string, Map<number, typeof picks>>();
+  
+  seasons.forEach(season => {
+    const roundMap = new Map<number, typeof picks>();
+    const seasonPicks = picks.filter(p => p.season === season);
+    const rounds = Array.from(new Set(seasonPicks.map(p => p.round))).sort((a, b) => a - b);
+    
+    rounds.forEach(round => {
+      const roundPicks = seasonPicks
+        .filter(p => p.round === round)
+        .sort((a, b) => a.ownerId - b.ownerId); // Sort by current owner roster ID
+      roundMap.set(round, roundPicks);
+    });
+    
+    picksBySeasonAndRound.set(season, roundMap);
+  });
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -141,10 +140,10 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Draft Picks Matrix */}
+        {/* Draft Board View */}
         <section className="animate-in" style={{ animationDelay: '0.2s' }}>
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-white">Draft Capital Matrix</h2>
+            <h2 className="text-xl font-bold text-white">Draft Board</h2>
             <div className="flex gap-2">
               {seasons.map(season => (
                 <span key={season} className="px-3 py-1 rounded-full bg-secondary/50 text-xs font-mono text-muted-foreground border border-white/5">
@@ -153,76 +152,84 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
-          
-          <div className="bg-card/30 border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
-            {viewMode === 'grid' ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[800px]">
-                  <thead>
-                    <tr className="bg-secondary/50 border-b border-white/5">
-                      <th className="p-4 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider w-[200px] sticky left-0 bg-card z-10">Team</th>
-                      {seasons.map(season => (
-                        <th key={season} className="p-4 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider min-w-[200px]">
-                          {season} Picks
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {rosters.map((roster) => {
-                      const user = getUser(roster.ownerId);
-                      return (
-                        <tr key={roster.id} className="hover:bg-white/[0.02] transition-colors group">
-                          <td className="p-4 sticky left-0 bg-card group-hover:bg-card/95 transition-colors border-r border-white/5 z-10">
-                            <div className="flex items-center gap-3">
-                              {user?.avatar ? (
-                                <img src={`https://sleepercdn.com/avatars/thumbs/${user.avatar}`} className="w-8 h-8 rounded-full" />
-                              ) : (
-                                <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">{user?.displayName?.[0]}</div>
-                              )}
-                              <div className="truncate max-w-[140px]">
-                                <div className="font-medium text-sm text-foreground truncate">{user?.displayName || "Unknown"}</div>
-                                <div className="text-xs text-muted-foreground font-mono">#{roster.rosterId}</div>
-                              </div>
-                            </div>
-                          </td>
-                          {seasons.map(season => {
-                            const rosterPicks = picksMap.get(roster.rosterId)?.get(season) || [];
+
+          <div className="space-y-6">
+            {seasons.map(season => {
+              const roundMap = picksBySeasonAndRound.get(season);
+              const rounds = Array.from(roundMap?.keys() || []).sort((a, b) => a - b);
+              
+              return (
+                <div key={season} className="space-y-4">
+                  <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-primary" />
+                    {season} Draft
+                  </h3>
+                  
+                  {rounds.map(round => {
+                    const roundPicks = roundMap?.get(round) || [];
+                    
+                    return (
+                      <div key={`${season}-r${round}`} className="bg-card/30 border border-white/5 rounded-xl overflow-hidden">
+                        <div className="bg-secondary/50 border-b border-white/5 px-6 py-3">
+                          <h4 className="font-bold text-sm text-foreground font-mono">Round {round}</h4>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-6">
+                          {roundPicks.map((pick, index) => {
+                            const currentOwner = getUserByRosterId(pick.ownerId);
+                            const originalRoster = getRosterById(pick.rosterId);
+                            const originalOwner = getUser(originalRoster?.ownerId);
+                            const isTransferred = pick.previousOwnerId && pick.previousOwnerId !== pick.ownerId;
+                            
                             return (
-                              <td key={`${roster.id}-${season}`} className="p-4 align-top">
-                                <div className="grid gap-2">
-                                  {rosterPicks.length > 0 ? (
-                                    rosterPicks.sort((a,b) => a.round - b.round).map(pick => {
-                                      const originalRoster = rosters.find(r => r.rosterId === pick.rosterId);
-                                      const originalOwner = getUser(originalRoster?.ownerId)?.displayName;
-                                      return (
-                                        <PickCard 
-                                          key={pick.id} 
-                                          pick={pick} 
-                                          originalOwnerName={originalOwner}
-                                        />
-                                      );
-                                    })
-                                  ) : (
-                                    <div className="h-8 flex items-center text-xs text-muted-foreground/30 font-mono pl-2 border-l-2 border-white/5">
-                                      -
+                              <div 
+                                key={pick.id} 
+                                className={`
+                                  p-4 rounded-lg border transition-all
+                                  ${isTransferred 
+                                    ? "bg-accent/15 border-accent/40 shadow-sm" 
+                                    : "bg-secondary/40 border-white/5"}
+                                  hover:border-white/20 hover:shadow-lg
+                                `}
+                              >
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    {currentOwner?.avatar ? (
+                                      <img 
+                                        src={`https://sleepercdn.com/avatars/thumbs/${currentOwner.avatar}`} 
+                                        alt={currentOwner.displayName}
+                                        className="w-6 h-6 rounded-full"
+                                      />
+                                    ) : (
+                                      <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">
+                                        {currentOwner?.displayName?.[0]}
+                                      </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-xs font-mono text-muted-foreground">Pick {index + 1}</div>
+                                      <div className="font-semibold text-sm text-foreground truncate">{currentOwner?.displayName || 'Unknown'}</div>
+                                    </div>
+                                  </div>
+                                  
+                                  {isTransferred && originalOwner && (
+                                    <div className="text-xs text-accent-foreground/80 pl-8 border-l border-accent/30 ml-1">
+                                      <span className="opacity-70">from </span>
+                                      <span className="font-medium">{originalOwner.displayName}</span>
                                     </div>
                                   )}
+                                  
+                                  <PickCard pick={pick} originalOwnerName={originalOwner?.displayName} />
                                 </div>
-                              </td>
+                              </div>
                             );
                           })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="p-6 text-center text-muted-foreground">
-                List view coming soon.
-              </div>
-            )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
         </section>
 
