@@ -13,8 +13,8 @@ export default function Dashboard() {
   const leagueId = params.id!;
   const { data, isLoading, error, refetch } = useLeague(leagueId);
   const [selectedSeasons, setSelectedSeasons] = useState<Set<string>>(new Set());
-  const [draggedPick, setDraggedPick] = useState<any>(null);
-  const [pickSwaps, setPickSwaps] = useState<Map<number, number>>(new Map()); // Map of original rosterId -> swapped rosterId
+  const [draggedTeam, setDraggedTeam] = useState<number | null>(null);
+  const [teamOrder, setTeamOrder] = useState<number[]>(rosters.map(r => r.rosterId));
 
   if (isLoading) return <DashboardSkeleton />;
   
@@ -58,8 +58,8 @@ export default function Dashboard() {
   // Extract unique seasons and sort
   const seasons = Array.from(new Set(picks.map(p => p.season))).sort();
 
-  // Get teams in draft order (1-8)
-  const teamsInOrder = rosters.slice().sort((a, b) => a.rosterId - b.rosterId);
+  // Get teams in the current display order (considering swaps)
+  const teamsInOrder = teamOrder.map(rosterId => rosters.find(r => r.rosterId === rosterId)!).filter(Boolean);
 
   // Organize picks by season -> round -> picks (sorted by ownerId/position in round)
   const picksBySeasonAndRound = new Map<string, Map<number, typeof picks>>();
@@ -79,30 +79,32 @@ export default function Dashboard() {
     picksBySeasonAndRound.set(season, roundMap);
   });
 
-  const handlePickDragStart = (pick: typeof picks[0]) => {
-    setDraggedPick(pick);
+  const handleTeamDragStart = (teamRosterId: number, e: React.DragEvent) => {
+    setDraggedTeam(teamRosterId);
+    e.dataTransfer.effectAllowed = "move";
   };
 
-  const handlePickDrop = (targetRosterId: number) => {
-    if (!draggedPick || draggedPick.ownerId === targetRosterId) {
-      setDraggedPick(null);
+  const handleTeamDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleTeamDrop = (targetRosterId: number, e: React.DragEvent) => {
+    e.preventDefault();
+    if (!draggedTeam || draggedTeam === targetRosterId) {
+      setDraggedTeam(null);
       return;
     }
 
-    // Swap the two picks
-    const newSwaps = new Map(pickSwaps);
-    const draggedOriginal = draggedPick.rosterId;
-    const targetOriginal = rosters.find(r => r.rosterId === targetRosterId)?.rosterId || targetRosterId;
+    // Swap team positions
+    const newOrder = [...teamOrder];
+    const draggedIndex = newOrder.indexOf(draggedTeam);
+    const targetIndex = newOrder.indexOf(targetRosterId);
 
-    // If already swapped, track the swap state
-    const draggedTarget = newSwaps.get(draggedOriginal) || draggedOriginal;
-    const targetTarget = newSwaps.get(targetOriginal) || targetOriginal;
+    [newOrder[draggedIndex], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[draggedIndex]];
 
-    newSwaps.set(draggedOriginal, targetTarget);
-    newSwaps.set(targetOriginal, draggedTarget);
-
-    setPickSwaps(newSwaps);
-    setDraggedPick(null);
+    setTeamOrder(newOrder);
+    setDraggedTeam(null);
   };
 
   return (
@@ -202,8 +204,16 @@ export default function Dashboard() {
                               <th className="p-3 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider w-20 sticky left-0 bg-card z-10">Round</th>
                               {teamsInOrder.map((team) => {
                                 const teamUser = getUser(team.ownerId);
+                                const isDraggedTeam = draggedTeam === team.rosterId;
                                 return (
-                                  <th key={team.rosterId} className="p-3 text-center text-xs font-bold uppercase tracking-wider min-w-32 border-r border-white/5 last:border-r-0">
+                                  <th 
+                                    key={team.rosterId} 
+                                    draggable
+                                    onDragStart={(e) => handleTeamDragStart(team.rosterId, e)}
+                                    onDragOver={handleTeamDragOver}
+                                    onDrop={(e) => handleTeamDrop(team.rosterId, e)}
+                                    className={`p-3 text-center text-xs font-bold uppercase tracking-wider min-w-32 border-r border-white/5 last:border-r-0 cursor-move transition-opacity ${isDraggedTeam ? "opacity-50" : "opacity-100"}`}
+                                  >
                                     <div className="flex flex-col items-center gap-1">
                                       {teamUser?.avatar ? (
                                         <img 
@@ -234,35 +244,31 @@ export default function Dashboard() {
                                   </td>
                                   {teamsInOrder.map((team) => {
                                     const pickForTeam = roundPicks.find(p => p.ownerId === team.rosterId);
-                                    const isDragging = draggedPick?.id === pickForTeam?.id;
+                                    const isTransferred = pickForTeam?.previousOwnerId && pickForTeam.previousOwnerId !== pickForTeam.ownerId;
+                                    const originalOwner = isTransferred ? getUser(rosters.find(r => r.rosterId === pickForTeam.rosterId)?.ownerId || null) : null;
                                     
                                     return (
                                       <td 
                                         key={`${round}-team${team.rosterId}`} 
                                         className="p-2 text-center align-top border-r border-white/5 last:border-r-0 min-h-24"
-                                        onDragOver={(e) => e.preventDefault()}
-                                        onDrop={() => pickForTeam && handlePickDrop(team.rosterId)}
                                       >
                                         {pickForTeam ? (
                                           <div 
-                                            draggable
-                                            onDragStart={() => handlePickDragStart(pickForTeam)}
                                             className={`
-                                              p-2 rounded-lg border transition-all text-xs cursor-grab active:cursor-grabbing
-                                              ${isDragging ? "opacity-50" : ""}
-                                              ${pickForTeam.previousOwnerId && pickForTeam.previousOwnerId !== pickForTeam.ownerId
+                                              p-2 rounded-lg border transition-all text-xs
+                                              ${isTransferred
                                                 ? "bg-accent/15 border-accent/40" 
                                                 : "bg-secondary/40 border-white/5"}
-                                              hover:border-white/20 hover:shadow-lg hover:scale-105
+                                              hover:border-white/20 hover:shadow-lg
                                             `}
                                           >
                                             <div className="space-y-1">
                                               <div className="font-mono text-[10px] text-muted-foreground">
                                                 {season} R{round}
                                               </div>
-                                              {pickForTeam.previousOwnerId && pickForTeam.previousOwnerId !== pickForTeam.ownerId && (
+                                              {isTransferred && originalOwner && (
                                                 <div className="text-[10px] text-accent-foreground/80">
-                                                  traded
+                                                  from {originalOwner.displayName?.split(' ')[0]}
                                                 </div>
                                               )}
                                             </div>
