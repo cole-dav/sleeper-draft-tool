@@ -79,8 +79,10 @@ export default function Dashboard() {
   const getRosterById = (rosterId: number) => rosters.find(r => r.rosterId === rosterId);
   const getUserByRosterId = (rosterId: number) => getUser(getRosterById(rosterId)?.ownerId || null);
 
-  // Extract unique seasons and sort
-  const seasons = Array.from(new Set(picks.map(p => p.season))).sort();
+  // Extract unique seasons and filter out 2025, then sort
+  const seasons = Array.from(new Set(picks.map(p => p.season)))
+    .filter(season => season !== "2025")
+    .sort();
 
   // Get teams in the current display order (considering swaps)
   const teamsInOrder = teamOrder.map(rosterId => rosters.find(r => r.rosterId === rosterId)!).filter(Boolean);
