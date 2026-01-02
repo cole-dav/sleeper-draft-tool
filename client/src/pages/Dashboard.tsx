@@ -248,8 +248,9 @@ export default function Dashboard() {
                                   </td>
                                   {teamsInOrder.map((team) => {
                                     const pickForTeam = roundPicks.find(p => p.ownerId === team.rosterId);
-                                    const isTransferred = pickForTeam?.previousOwnerId && pickForTeam.previousOwnerId !== pickForTeam.ownerId;
-                                    const originalOwner = isTransferred ? getUser(rosters.find(r => r.rosterId === pickForTeam.rosterId)?.ownerId || null) : null;
+                                    const isTransferred = pickForTeam?.rosterId && pickForTeam.rosterId !== pickForTeam.ownerId;
+                                    const originalOwnerRoster = rosters.find(r => r.rosterId === pickForTeam?.rosterId);
+                                    const originalOwner = isTransferred ? getUser(originalOwnerRoster?.ownerId || null) : null;
                                     
                                     return (
                                       <td 
@@ -261,7 +262,7 @@ export default function Dashboard() {
                                             className={`
                                               p-2 rounded-lg border transition-all text-xs
                                               ${isTransferred
-                                                ? "bg-accent/15 border-accent/40" 
+                                                ? "bg-primary/10 border-primary/30" 
                                                 : "bg-secondary/40 border-white/5"}
                                               hover:border-white/20 hover:shadow-lg
                                             `}
@@ -271,7 +272,7 @@ export default function Dashboard() {
                                                 {season} R{round}
                                               </div>
                                               {isTransferred && originalOwner && (
-                                                <div className="text-[10px] text-accent-foreground/80">
+                                                <div className="text-[10px] text-primary font-medium">
                                                   from {originalOwner.displayName?.split(' ')[0]}
                                                 </div>
                                               )}
