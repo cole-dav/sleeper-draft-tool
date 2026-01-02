@@ -55,6 +55,10 @@ export type Roster = typeof rosters.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type DraftPick = typeof draftPicks.$inferSelect;
 export type UpdateDraftPick = z.infer<typeof updateDraftPickSchema>;
+export type InsertLeague = typeof leagues.$inferInsert;
+export type InsertRoster = typeof rosters.$inferInsert;
+export type InsertUser = typeof users.$inferInsert;
+export type InsertDraftPick = typeof draftPicks.$inferInsert;
 
 // API Response Types
 export type LeagueDataResponse = {
