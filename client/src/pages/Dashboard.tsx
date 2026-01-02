@@ -208,7 +208,7 @@ export default function Dashboard() {
                     Team needs are calculated by analyzing each team's roster composition. We compare their talent depth at each position (QB, RB, WR, TE) against league averages using KTC (KeepTradeCut) market values.
                   </p>
                   <p className="text-xs italic text-muted-foreground">
-                    *A lower score indicates a higher positional need.
+                    *A higher score indicates a higher positional need.
                   </p>
                 </div>
               </TooltipContent>

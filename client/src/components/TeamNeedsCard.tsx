@@ -14,55 +14,53 @@ export function TeamNeedsCard({ needs, user, roster }: TeamNeedsCardProps) {
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-card/50 backdrop-blur-sm border border-white/5 rounded-xl p-5 hover:border-white/10 transition-colors"
+      className="bg-card/40 backdrop-blur-sm border border-white/5 rounded-lg p-3 hover:border-white/10 transition-colors"
     >
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-2 mb-3">
         {user?.avatar ? (
           <img 
             src={`https://sleepercdn.com/avatars/thumbs/${user.avatar}`} 
             alt={user.displayName} 
-            className="w-10 h-10 rounded-full bg-secondary ring-2 ring-white/5"
+            className="w-7 h-7 rounded-full bg-secondary ring-1 ring-white/5"
           />
         ) : (
-          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-lg font-bold">
+          <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">
             {user?.displayName?.charAt(0) || "T"}
           </div>
         )}
         <div className="overflow-hidden">
-          <h3 className="font-display font-bold text-lg truncate text-foreground">
+          <h3 className="font-display font-bold text-sm truncate text-foreground">
             {user?.displayName || `Roster ${roster.rosterId}`}
           </h3>
-          <p className="text-xs text-muted-foreground font-mono">
-            Roster #{roster.rosterId}
+          <p className="text-[10px] text-muted-foreground font-mono">
+            #{roster.rosterId}
           </p>
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2">
         {sortedNeeds.slice(0, 4).map((need) => (
-          <div key={need.position} className="flex items-center justify-between group">
-            <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+          <div key={need.position} className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold text-muted-foreground w-5">
               {need.position}
             </span>
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-24 bg-secondary rounded-full overflow-hidden">
-                <div 
-                  className={`h-full rounded-full ${
-                    need.score > 7 ? "bg-destructive" : 
-                    need.score > 4 ? "bg-yellow-500" : "bg-primary"
-                  }`}
-                  style={{ width: `${Math.min(need.score * 10, 100)}%` }}
-                />
-              </div>
-              <span className={`text-xs font-mono font-bold w-4 text-right ${
-                 need.score > 7 ? "text-destructive" : 
-                 need.score > 4 ? "text-yellow-500" : "text-primary"
-              }`}>
-                {need.score}
-              </span>
+            <div className="flex-1 h-1.5 bg-secondary/50 rounded-full overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all ${
+                  need.score > 70 ? "bg-destructive" : 
+                  need.score > 40 ? "bg-yellow-500" : "bg-primary"
+                }`}
+                style={{ width: `${need.score}%` }}
+              />
             </div>
+            <span className={`text-[9px] font-mono font-bold w-4 text-right ${
+               need.score > 70 ? "text-destructive" : 
+               need.score > 40 ? "text-yellow-500" : "text-primary"
+            }`}>
+              {Math.round(need.score)}
+            </span>
           </div>
         ))}
       </div>

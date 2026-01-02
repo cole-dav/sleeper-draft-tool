@@ -39,7 +39,7 @@ function calculateTeamNeeds(roster: any, allRosters: any[]) {
   return positions.map(pos => ({
     position: pos,
     score: Math.floor(Math.random() * 100) // Random score 0-100
-  })).sort((a, b) => a.score - b.score); // Lowest score = highest need
+  })).sort((a, b) => b.score - a.score); // Highest score = highest need
 }
 
 export async function registerRoutes(
