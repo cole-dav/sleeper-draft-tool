@@ -1,5 +1,5 @@
 import { useParams, Link } from "wouter";
-import { useLeague } from "@/hooks/use-league";
+import { useLeague, useUpdatePick } from "@/hooks/use-league";
 import { PickCard } from "@/components/PickCard";
 import { TeamNeedsCard } from "@/components/TeamNeedsCard";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { api } from "@shared/routes";
 import {
   Tooltip,
   TooltipContent,
@@ -32,7 +33,7 @@ export default function Dashboard() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/league", leagueId] });
+      queryClient.invalidateQueries({ queryKey: [api.league.get.path, leagueId] });
       setEditingPickId(null);
       setCommentValue("");
     },
