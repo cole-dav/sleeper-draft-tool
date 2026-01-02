@@ -4,9 +4,17 @@ import { PickCard } from "@/components/PickCard";
 import { TeamNeedsCard } from "@/components/TeamNeedsCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, RefreshCw, Trophy, Calendar, Users } from "lucide-react";
+import { ArrowLeft, RefreshCw, Trophy, Calendar, Users, HelpCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
 
 export default function Dashboard() {
   const params = useParams();
@@ -15,6 +23,18 @@ export default function Dashboard() {
   const [selectedSeasons, setSelectedSeasons] = useState<Set<string>>(new Set());
   const [draggedTeam, setDraggedTeam] = useState<number | null>(null);
   const [teamOrder, setTeamOrder] = useState<number[]>([]);
+  const [editingPickId, setEditingPickId] = useState<number | null>(null);
+
+  const updatePickMutation = useMutation({
+    mutationFn: async ({ id, comment }: { id: number; comment: string }) => {
+      const res = await apiRequest("PATCH", `/api/picks/${id}`, { comment });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/league/${leagueId}`] });
+      setEditingPickId(null);
+    },
+  });
 
   if (isLoading) return <DashboardSkeleton />;
 
@@ -162,6 +182,20 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 mb-6">
             <h2 className="text-xl font-bold text-white">Team Needs Analysis</h2>
             <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-bold border border-primary/20">KTC Data</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-white/5 p-0">
+                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs p-4">
+                <p className="text-sm">
+                  Team needs are calculated by analyzing each team's roster composition. We compare their talent depth at each position (QB, RB, WR, TE) against league averages using KTC (KeepTradeCut) market values. 
+                  <br /><br />
+                  A lower score indicates a higher positional need.
+                </p>
+              </TooltipContent>
+            </Tooltip>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {rosters.map((roster, i) => (
@@ -281,6 +315,47 @@ export default function Dashboard() {
                                                   Original Pick
                                                 </div>
                                               )}
+                                              
+                                              <div 
+                                                className="mt-2 min-h-[1.5rem] flex items-center justify-center cursor-text"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setEditingPickId(pickForTeam.id);
+                                                }}
+                                              >
+                                                {editingPickId === pickForTeam.id ? (
+                                                  <Input
+                                                    autoFocus
+                                                    defaultValue={pickForTeam.comment || ""}
+                                                    placeholder="Prediction..."
+                                                    className="h-6 text-[10px] py-0 px-1 bg-background/50 border-white/10"
+                                                    onBlur={(e) => {
+                                                      if (e.target.value !== (pickForTeam.comment || "")) {
+                                                        updatePickMutation.mutate({ 
+                                                          id: pickForTeam.id, 
+                                                          comment: e.target.value 
+                                                        });
+                                                      } else {
+                                                        setEditingPickId(null);
+                                                      }
+                                                    }}
+                                                    onKeyDown={(e) => {
+                                                      if (e.key === 'Enter') {
+                                                        updatePickMutation.mutate({ 
+                                                          id: pickForTeam.id, 
+                                                          comment: (e.target as HTMLInputElement).value 
+                                                        });
+                                                      } else if (e.key === 'Escape') {
+                                                        setEditingPickId(null);
+                                                      }
+                                                    }}
+                                                  />
+                                                ) : (
+                                                  <div className={`text-[10px] italic ${pickForTeam.comment ? 'text-primary' : 'text-muted-foreground/30'}`}>
+                                                    {pickForTeam.comment || "Click to predict..."}
+                                                  </div>
+                                                )}
+                                              </div>
                                             </div>
                                           </div>
                                         ) : (

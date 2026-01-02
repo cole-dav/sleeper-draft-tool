@@ -39,6 +39,7 @@ export const draftPicks = pgTable("draft_picks", {
   ownerId: integer("owner_id").notNull(), // Current owner roster ID
   previousOwnerId: integer("previous_owner_id"), // Who traded it (if applicable)
   pickSlot: text("pick_slot"), // User manual override (e.g. "1.01", "Early 1st")
+  comment: text("comment"), // User prediction/note
 });
 
 // Zod Schemas
@@ -46,7 +47,7 @@ export const insertLeagueSchema = createInsertSchema(leagues);
 export const insertRosterSchema = createInsertSchema(rosters);
 export const insertUserSchema = createInsertSchema(users);
 export const insertDraftPickSchema = createInsertSchema(draftPicks).omit({ id: true });
-export const updateDraftPickSchema = createInsertSchema(draftPicks).pick({ pickSlot: true });
+export const updateDraftPickSchema = createInsertSchema(draftPicks).pick({ pickSlot: true, comment: true });
 
 // Types
 export type League = typeof leagues.$inferSelect;
