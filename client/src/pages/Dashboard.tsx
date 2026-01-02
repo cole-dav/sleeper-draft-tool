@@ -24,6 +24,7 @@ export default function Dashboard() {
   const [draggedTeam, setDraggedTeam] = useState<number | null>(null);
   const [teamOrder, setTeamOrder] = useState<number[]>([]);
   const [editingPickId, setEditingPickId] = useState<number | null>(null);
+  const [commentValue, setCommentValue] = useState("");
 
   const updatePickMutation = useMutation({
     mutationFn: async ({ id, comment }: { id: number; comment: string }) => {
@@ -33,6 +34,7 @@ export default function Dashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/league", leagueId] });
       setEditingPickId(null);
+      setCommentValue("");
     },
   });
 
@@ -338,26 +340,37 @@ export default function Dashboard() {
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   setEditingPickId(pickForTeam.id);
+                                                  setCommentValue(pickForTeam.comment || "");
                                                 }}
                                               >
                                                 {editingPickId === pickForTeam.id ? (
                                                   <Input
                                                     autoFocus
-                                                    defaultValue={pickForTeam.comment || ""}
+                                                    value={commentValue}
+                                                    onChange={(e) => setCommentValue(e.target.value)}
                                                     placeholder="Prediction..."
                                                     className="h-6 text-[10px] py-0 px-1 bg-background/50 border-white/10"
                                                     onKeyDown={(e) => {
                                                       if (e.key === 'Enter') {
-                                                        const val = (e.target as HTMLInputElement).value;
-                                                        if (val !== (pickForTeam.comment || "")) {
+                                                        if (commentValue !== (pickForTeam.comment || "")) {
                                                           updatePickMutation.mutate({ 
                                                             id: pickForTeam.id, 
-                                                            comment: val 
+                                                            comment: commentValue 
                                                           });
                                                         } else {
                                                           setEditingPickId(null);
                                                         }
                                                       } else if (e.key === 'Escape') {
+                                                        setEditingPickId(null);
+                                                      }
+                                                    }}
+                                                    onBlur={() => {
+                                                      if (commentValue !== (pickForTeam.comment || "")) {
+                                                        updatePickMutation.mutate({ 
+                                                          id: pickForTeam.id, 
+                                                          comment: commentValue 
+                                                        });
+                                                      } else {
                                                         setEditingPickId(null);
                                                       }
                                                     }}
