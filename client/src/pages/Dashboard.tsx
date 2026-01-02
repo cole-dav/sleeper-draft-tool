@@ -346,22 +346,17 @@ export default function Dashboard() {
                                                     defaultValue={pickForTeam.comment || ""}
                                                     placeholder="Prediction..."
                                                     className="h-6 text-[10px] py-0 px-1 bg-background/50 border-white/10"
-                                                    onBlur={(e) => {
-                                                      if (e.target.value !== (pickForTeam.comment || "")) {
-                                                        updatePickMutation.mutate({ 
-                                                          id: pickForTeam.id, 
-                                                          comment: e.target.value 
-                                                        });
-                                                      } else {
-                                                        setEditingPickId(null);
-                                                      }
-                                                    }}
                                                     onKeyDown={(e) => {
                                                       if (e.key === 'Enter') {
-                                                        updatePickMutation.mutate({ 
-                                                          id: pickForTeam.id, 
-                                                          comment: (e.target as HTMLInputElement).value 
-                                                        });
+                                                        const val = (e.target as HTMLInputElement).value;
+                                                        if (val !== (pickForTeam.comment || "")) {
+                                                          updatePickMutation.mutate({ 
+                                                            id: pickForTeam.id, 
+                                                            comment: val 
+                                                          });
+                                                        } else {
+                                                          setEditingPickId(null);
+                                                        }
                                                       } else if (e.key === 'Escape') {
                                                         setEditingPickId(null);
                                                       }
