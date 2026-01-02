@@ -61,7 +61,18 @@ export default function Dashboard() {
   }
 
   if (teamOrder.length === 0 && rosters.length > 0) {
-    setTeamOrder(rosters.map(r => r.rosterId));
+    // Sort rosters by record: losses (desc) then wins (asc)
+    // Worst record to the left means most losses, then fewest wins
+    const sortedRosters = [...rosters].sort((a, b) => {
+      const aLosses = (a.settings as any)?.losses || 0;
+      const bLosses = (b.settings as any)?.losses || 0;
+      if (aLosses !== bLosses) return bLosses - aLosses;
+      
+      const aWins = (a.settings as any)?.wins || 0;
+      const bWins = (b.settings as any)?.wins || 0;
+      return aWins - bWins;
+    });
+    setTeamOrder(sortedRosters.map(r => r.rosterId));
   }
   
   const toggleSeason = (season: string) => {
