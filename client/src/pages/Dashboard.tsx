@@ -247,10 +247,11 @@ export default function Dashboard() {
                                     Rd {round}
                                   </td>
                                   {teamsInOrder.map((team) => {
-                                    const pickForTeam = roundPicks.find(p => p.ownerId === team.rosterId);
-                                    const isTransferred = pickForTeam?.rosterId && pickForTeam.rosterId !== pickForTeam.ownerId;
-                                    const originalOwnerRoster = rosters.find(r => r.rosterId === pickForTeam?.rosterId);
-                                    const originalOwner = isTransferred ? getUser(originalOwnerRoster?.ownerId || null) : null;
+                                    // The pick in this column belongs to the original owner (the team in the header)
+                                    const pickForTeam = roundPicks.find(p => p.rosterId === team.rosterId);
+                                    const isTransferred = pickForTeam?.ownerId && pickForTeam.ownerId !== team.rosterId;
+                                    const currentOwnerRoster = rosters.find(r => r.rosterId === pickForTeam?.ownerId);
+                                    const currentOwner = isTransferred ? getUser(currentOwnerRoster?.ownerId || null) : null;
                                     
                                     return (
                                       <td 
@@ -262,7 +263,7 @@ export default function Dashboard() {
                                             className={`
                                               p-2 rounded-lg border transition-all text-xs
                                               ${isTransferred
-                                                ? "bg-primary/10 border-primary/30" 
+                                                ? "bg-accent/10 border-accent/30" 
                                                 : "bg-secondary/40 border-white/5"}
                                               hover:border-white/20 hover:shadow-lg
                                             `}
@@ -271,9 +272,13 @@ export default function Dashboard() {
                                               <div className="font-mono text-[10px] text-muted-foreground">
                                                 {season} R{round}
                                               </div>
-                                              {isTransferred && originalOwner && (
-                                                <div className="text-[10px] text-primary font-medium">
-                                                  from {originalOwner.displayName?.split(' ')[0]}
+                                              {isTransferred && currentOwner ? (
+                                                <div className="text-[10px] text-accent-foreground font-medium">
+                                                  owned by {currentOwner.displayName?.split(' ')[0]}
+                                                </div>
+                                              ) : (
+                                                <div className="text-[10px] text-muted-foreground/60">
+                                                  Original Pick
                                                 </div>
                                               )}
                                             </div>
