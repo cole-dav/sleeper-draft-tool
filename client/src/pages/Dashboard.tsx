@@ -195,18 +195,22 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 mb-6">
             <h2 className="text-xl font-bold text-white">Team Needs Analysis</h2>
             <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-bold border border-primary/20">KTC Data</span>
-            <Tooltip>
+            <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full hover:bg-white/5 p-0">
                   <HelpCircle className="h-4 w-4 text-muted-foreground" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent className="max-w-xs p-4">
-                <p className="text-sm">
-                  Team needs are calculated by analyzing each team's roster composition. We compare their talent depth at each position (QB, RB, WR, TE) against league averages using KTC (KeepTradeCut) market values. 
-                  <br /><br />
-                  A lower score indicates a higher positional need.
-                </p>
+              <TooltipContent className="max-w-xs p-4 bg-popover text-popover-foreground border shadow-md">
+                <div className="space-y-2">
+                  <p className="font-bold border-b pb-1">Calculation Logic</p>
+                  <p className="text-xs leading-relaxed">
+                    Team needs are calculated by analyzing each team's roster composition. We compare their talent depth at each position (QB, RB, WR, TE) against league averages using KTC (KeepTradeCut) market values.
+                  </p>
+                  <p className="text-xs italic text-muted-foreground">
+                    *A lower score indicates a higher positional need.
+                  </p>
+                </div>
               </TooltipContent>
             </Tooltip>
           </div>
