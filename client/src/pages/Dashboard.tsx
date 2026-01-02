@@ -14,10 +14,10 @@ export default function Dashboard() {
   const { data, isLoading, error, refetch } = useLeague(leagueId);
   const [selectedSeasons, setSelectedSeasons] = useState<Set<string>>(new Set());
   const [draggedTeam, setDraggedTeam] = useState<number | null>(null);
-  const [teamOrder, setTeamOrder] = useState<number[]>(rosters.map(r => r.rosterId));
+  const [teamOrder, setTeamOrder] = useState<number[]>([]);
 
   if (isLoading) return <DashboardSkeleton />;
-  
+
   if (error || !data) return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
       <div className="max-w-md text-center space-y-4">
@@ -33,11 +33,15 @@ export default function Dashboard() {
   );
 
   const { league, rosters, users, picks, teamNeeds } = data;
-  
-  // Initialize selectedSeasons on first load
+
+  // Initialize selectedSeasons and teamOrder on first load
   if (selectedSeasons.size === 0) {
     const allSeasons = Array.from(new Set(picks.map(p => p.season))).sort();
     setSelectedSeasons(new Set(allSeasons));
+  }
+
+  if (teamOrder.length === 0 && rosters.length > 0) {
+    setTeamOrder(rosters.map(r => r.rosterId));
   }
   
   const toggleSeason = (season: string) => {
