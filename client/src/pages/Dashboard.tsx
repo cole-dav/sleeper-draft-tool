@@ -270,22 +270,28 @@ export default function Dashboard() {
                                     onDragStart={(e) => handleTeamDragStart(team.rosterId, e)}
                                     onDragOver={handleTeamDragOver}
                                     onDrop={(e) => handleTeamDrop(team.rosterId, e)}
-                                    className={`p-3 text-center text-xs font-bold uppercase tracking-wider min-w-32 border-r border-white/5 last:border-r-0 cursor-move transition-opacity ${isDraggedTeam ? "opacity-50" : "opacity-100"}`}
+                                    className={`p-3 text-center text-xs font-bold uppercase tracking-wider min-w-32 border-r border-white/5 last:border-r-0 cursor-move transition-all duration-200 group relative ${isDraggedTeam ? "opacity-50" : "opacity-100"} hover:bg-primary/5`}
                                   >
-                                    <div className="flex flex-col items-center gap-1">
-                                      {teamUser?.avatar ? (
-                                        <img 
-                                          src={`https://sleepercdn.com/avatars/thumbs/${teamUser.avatar}`} 
-                                          alt={teamUser.displayName}
-                                          className="w-6 h-6 rounded-full"
-                                        />
-                                      ) : (
-                                        <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-bold">
-                                          {teamUser?.displayName?.[0]}
-                                        </div>
-                                      )}
-                                      <span className="text-[10px] text-muted-foreground">{teamUser?.displayName?.split(' ')[0] || 'Team'}</span>
+                                    <div className="flex flex-col items-center gap-1 relative z-10">
+                                      <div className="relative">
+                                        {teamUser?.avatar ? (
+                                          <img 
+                                            src={`https://sleepercdn.com/avatars/thumbs/${teamUser.avatar}`} 
+                                            alt={teamUser.displayName}
+                                            className="w-8 h-8 rounded-full ring-2 ring-transparent group-hover:ring-primary/50 transition-all duration-200"
+                                          />
+                                        ) : (
+                                          <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold group-hover:bg-primary/20 transition-colors">
+                                            {teamUser?.displayName?.[0]}
+                                          </div>
+                                        )}
+                                        <div className="absolute -inset-1 bg-primary/20 rounded-full blur opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                                      </div>
+                                      <span className="text-[10px] text-muted-foreground group-hover:text-primary transition-colors duration-200">
+                                        {teamUser?.displayName?.split(' ')[0] || 'Team'}
+                                      </span>
                                     </div>
+                                    <div className="absolute inset-x-0 bottom-0 h-0.5 bg-primary scale-x-0 group-hover:scale-x-100 transition-transform duration-200" />
                                   </th>
                                 );
                               })}
