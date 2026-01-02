@@ -31,7 +31,7 @@ export default function Dashboard() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/league/${leagueId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/league", leagueId] });
       setEditingPickId(null);
     },
   });
