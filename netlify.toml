@@ -3,22 +3,14 @@
   publish = "dist/public"
   functions = "netlify/functions"
 
-[[redirects]]
-  from = "/api/league/:id/fetch"
-  to = "/.netlify/functions/league-fetch?leagueId=:id"
-  status = 307
-  force = true
+[functions]
+  node_bundler = "esbuild"
+  api = { timeout = 26 }
 
 [[redirects]]
-  from = "/api/league/:id"
-  to = "/.netlify/functions/league-get?leagueId=:id"
-  status = 307
-  force = true
-
-[[redirects]]
-  from = "/api/picks/:id"
-  to = "/.netlify/functions/picks-update?pickId=:id"
-  status = 307
+  from = "/api/*"
+  to = "/.netlify/functions/api"
+  status = 200
   force = true
 
 [[redirects]]
