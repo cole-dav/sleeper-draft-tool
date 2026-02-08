@@ -33,42 +33,43 @@ const handler: Handler = async (event) => {
       const leagueData = await leagueRes.json();
 
       await storage.upsertLeague({
-        leagueId: leagueData.league_id,
-        name: leagueData.name,
-        totalRosters: leagueData.total_rosters,
-        season: leagueData.season,
-        avatar: leagueData.avatar,
-        settings: leagueData.settings,
+        leagueId: String(leagueData.league_id),
+        name: leagueData.name || "Unknown League",
+        totalRosters: leagueData.total_rosters ?? 12,
+        season: String(leagueData.season || new Date().getFullYear()),
+        avatar: leagueData.avatar ?? null,
+        settings: leagueData.settings ?? {},
       });
 
       const usersRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`);
       const usersData = await usersRes.json();
-      const usersList = usersData.map((u: any) => ({
-        userId: u.user_id,
+      const usersList = (Array.isArray(usersData) ? usersData : []).map((u: any) => ({
+        userId: String(u.user_id),
         leagueId: leagueId,
-        displayName: u.display_name,
-        avatar: u.avatar,
+        displayName: String(u.display_name ?? "Unknown"),
+        avatar: u.avatar ?? null,
       }));
       await storage.upsertUsers(usersList);
 
       const rostersRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`);
       const rostersData = await rostersRes.json();
-      const rostersList = rostersData.map((r: any) => ({
+      const rostersList = (Array.isArray(rostersData) ? rostersData : []).map((r: any) => ({
         leagueId: leagueId,
         rosterId: r.roster_id,
-        ownerId: r.owner_id,
-        settings: r.settings,
+        ownerId: r.owner_id ?? null,
+        settings: r.settings ?? null,
       }));
       await storage.upsertRosters(rostersList);
 
       const tradedRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`);
-      const tradedPicks = await tradedRes.json();
+      const tradedPicksRaw = await tradedRes.json();
+      const tradedPicks = Array.isArray(tradedPicksRaw) ? tradedPicksRaw : [];
 
       await storage.clearPicks(leagueId);
 
       const picksToInsert: InsertDraftPick[] = [];
-      const currentSeason = parseInt(leagueData.season);
-      const rounds = leagueData.settings?.draft_rounds || 3;
+      const currentSeason = parseInt(String(leagueData.season), 10) || new Date().getFullYear();
+      const rounds = leagueData.settings?.draft_rounds ?? 3;
 
       for (let year = currentSeason; year < currentSeason + 3; year++) {
         for (let round = 1; round <= rounds; round++) {
@@ -123,10 +124,14 @@ const handler: Handler = async (event) => {
 
     return jsonResponse(404, { message: "Not found" });
   } catch (e: any) {
-    console.error("API error:", e);
-    if (e.message === "League not found") return jsonResponse(404, { message: e.message });
+    const err = e instanceof Error ? e : new Error(String(e));
+    console.error("API error:", err.message, err.stack);
+    if (err.message === "League not found") return jsonResponse(404, { message: err.message });
     if (e instanceof z.ZodError) return jsonResponse(400, { message: e.errors[0]?.message || "Validation error" });
-    return jsonResponse(500, { message: e.message || "Internal server error" });
+    return jsonResponse(500, {
+      message: err.message || "Internal server error",
+      hint: "Check Netlify Functions logs and DATABASE_URL. Use Supabase pooler (port 6543) for serverless.",
+    });
   }
 };
 

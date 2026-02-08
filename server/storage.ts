@@ -86,15 +86,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUsers(usersList: InsertUser[]): Promise<User[]> {
-    // Can do bulk upsert with ON CONFLICT if the array isn't too huge
     if (usersList.length === 0) return [];
-    return db.insert(users).values(usersList)
-      .onConflictDoUpdate({ target: users.userId, set: { 
-        displayName: sql`excluded.display_name`,
-        avatar: sql`excluded.avatar`,
-        leagueId: sql`excluded.league_id`
-      }})
-      .returning();
+    const results: User[] = [];
+    for (const user of usersList) {
+      results.push(await this.upsertUser(user));
+    }
+    return results;
   }
 
   async getPicks(leagueId: string): Promise<DraftPick[]> {
@@ -120,8 +117,5 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 }
-
-// Helper sql import needed for the upsertUsers sql`excluded...`
-import { sql } from "drizzle-orm";
 
 export const storage = new DatabaseStorage();

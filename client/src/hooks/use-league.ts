@@ -14,8 +14,13 @@ export function useFetchLeague() {
       });
       
       if (!res.ok) {
+        let msg = "Failed to sync league data";
+        try {
+          const data = await res.json();
+          if (data?.message) msg = data.message;
+        } catch {}
         if (res.status === 404) throw new Error("League not found on Sleeper");
-        throw new Error("Failed to sync league data");
+        throw new Error(msg);
       }
       
       return api.league.fetch.responses[200].parse(await res.json());
