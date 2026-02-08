@@ -1,6 +1,25 @@
 [build]
   command = "npm run build"
   publish = "dist/public"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/league/:id/fetch"
+  to = "/.netlify/functions/league-fetch?leagueId=:id"
+  status = 307
+  force = true
+
+[[redirects]]
+  from = "/api/league/:id"
+  to = "/.netlify/functions/league-get?leagueId=:id"
+  status = 307
+  force = true
+
+[[redirects]]
+  from = "/api/picks/:id"
+  to = "/.netlify/functions/picks-update?pickId=:id"
+  status = 307
+  force = true
 
 [[redirects]]
   from = "/*"
