@@ -29,6 +29,12 @@ export const users = pgTable("users", {
   avatar: text("avatar"),
 });
 
+// Stored display order of teams (roster IDs) for draft board columns
+export const leagueTeamOrder = pgTable("league_team_order", {
+  leagueId: text("league_id").primaryKey(),
+  order: jsonb("order").notNull(), // number[] - roster IDs in display order
+});
+
 // Store resolved draft picks (both original and traded)
 export const draftPicks = pgTable("draft_picks", {
   id: serial("id").primaryKey(),
@@ -53,6 +59,7 @@ export const updateDraftPickSchema = createInsertSchema(draftPicks).pick({ pickS
 export type League = typeof leagues.$inferSelect;
 export type Roster = typeof rosters.$inferSelect;
 export type User = typeof users.$inferSelect;
+export type LeagueTeamOrder = typeof leagueTeamOrder.$inferSelect;
 export type DraftPick = typeof draftPicks.$inferSelect;
 export type UpdateDraftPick = z.infer<typeof updateDraftPickSchema>;
 export type InsertLeague = typeof leagues.$inferInsert;
@@ -67,4 +74,5 @@ export type LeagueDataResponse = {
   users: User[];
   picks: DraftPick[];
   teamNeeds: Record<number, { position: string; score: number }[]>; // rosterId -> needs
+  teamOrder?: number[]; // saved column order (roster IDs), if set
 };

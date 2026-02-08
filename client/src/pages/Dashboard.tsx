@@ -1,12 +1,12 @@
 import { useParams, Link } from "wouter";
-import { useLeague, useUpdatePick } from "@/hooks/use-league";
+import { useLeague, useUpdatePick, useUpdateLeagueTeamOrder } from "@/hooks/use-league";
 import { PickCard } from "@/components/PickCard";
 import { TeamNeedsCard } from "@/components/TeamNeedsCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, RefreshCw, Trophy, Calendar, Users, HelpCircle } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { api } from "@shared/routes";
@@ -38,6 +38,9 @@ export default function Dashboard() {
       setCommentValue("");
     },
   });
+
+  const updateTeamOrderMutation = useUpdateLeagueTeamOrder();
+  const teamOrderInitialized = useRef(false);
 
   if (isLoading) return <DashboardSkeleton />;
 
@@ -120,10 +123,21 @@ export default function Dashboard() {
     return getRecordOrder();
   };
 
-  if (teamOrder.length === 0 && rosters.length > 0) {
-    setTeamOrder(getNextDraftOrder());
-  }
-  
+  useEffect(() => {
+    if (!data?.rosters?.length || teamOrderInitialized.current) return;
+    teamOrderInitialized.current = true;
+    if (data.teamOrder?.length) {
+      setTeamOrder(data.teamOrder);
+    } else {
+      setTeamOrder(getNextDraftOrder());
+    }
+  }, [data]);
+
+  useEffect(() => {
+    teamOrderInitialized.current = false;
+    setTeamOrder([]);
+  }, [leagueId]);
+
   const toggleSeason = (season: string) => {
     const newSeasons = new Set(selectedSeasons);
     if (newSeasons.has(season)) {
@@ -182,15 +196,14 @@ export default function Dashboard() {
       return;
     }
 
-    // Swap team positions
     const newOrder = [...teamOrder];
     const draggedIndex = newOrder.indexOf(draggedTeam);
     const targetIndex = newOrder.indexOf(targetRosterId);
-
     [newOrder[draggedIndex], newOrder[targetIndex]] = [newOrder[targetIndex], newOrder[draggedIndex]];
 
     setTeamOrder(newOrder);
     setDraggedTeam(null);
+    updateTeamOrderMutation.mutate({ leagueId, order: newOrder });
   };
 
   return (

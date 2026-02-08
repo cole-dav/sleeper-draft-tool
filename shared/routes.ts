@@ -34,6 +34,16 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    // Save draft board column order (sticky)
+    teamOrder: {
+      method: 'PUT' as const,
+      path: '/api/league/:id/team-order',
+      input: z.object({ order: z.array(z.number()) }),
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   picks: {
     // Manually override a pick slot

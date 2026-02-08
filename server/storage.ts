@@ -1,6 +1,6 @@
 import { db } from "./db";
 import {
-  leagues, rosters, users, draftPicks,
+  leagues, rosters, users, draftPicks, leagueTeamOrder,
   type League, type Roster, type User, type DraftPick, type UpdateDraftPick,
   type InsertLeague, type InsertRoster, type InsertUser, type InsertDraftPick
 } from "@shared/schema";
@@ -29,6 +29,10 @@ export interface IStorage {
   
   // Clear existing picks for a league to avoid duplicates during re-fetch
   clearPicks(leagueId: string): Promise<void>;
+
+  // Team display order (draft board columns)
+  getLeagueTeamOrder(leagueId: string): Promise<number[] | undefined>;
+  setLeagueTeamOrder(leagueId: string, order: number[]): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -115,6 +119,17 @@ export class DatabaseStorage implements IStorage {
   async updatePick(id: number, update: UpdateDraftPick): Promise<DraftPick | undefined> {
     const [result] = await db.update(draftPicks).set(update).where(eq(draftPicks.id, id)).returning();
     return result;
+  }
+
+  async getLeagueTeamOrder(leagueId: string): Promise<number[] | undefined> {
+    const [row] = await db.select().from(leagueTeamOrder).where(eq(leagueTeamOrder.leagueId, leagueId));
+    if (!row?.order || !Array.isArray(row.order)) return undefined;
+    return row.order as number[];
+  }
+
+  async setLeagueTeamOrder(leagueId: string, order: number[]): Promise<void> {
+    await db.insert(leagueTeamOrder).values({ leagueId, order })
+      .onConflictDoUpdate({ target: leagueTeamOrder.leagueId, set: { order } });
   }
 }
 

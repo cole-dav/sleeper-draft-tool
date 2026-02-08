@@ -96,42 +96,65 @@ export async function registerRoutes(
       const tradedRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`);
       const tradedPicks = await tradedRes.json();
 
-      // Clear existing picks to rebuild
       await storage.clearPicks(leagueId);
 
-      const picksToInsert: InsertDraftPick[] = [];
       const currentSeason = parseInt(leagueData.season);
-      const rounds = leagueData.settings.draft_rounds || 3; // Default 3 rounds
+      const rounds = leagueData.settings.draft_rounds || 3;
+      const numTeams = rostersData.length;
+      const seasonDraftOrder: Record<string, Record<number, number[]>> = {};
+      try {
+        const draftsRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/drafts`);
+        const draftsRaw = await draftsRes.json();
+        const draftsList = Array.isArray(draftsRaw) ? draftsRaw : [];
+        for (const d of draftsList) {
+          const draftId = d.draft_id;
+          const season = String(d.season || "");
+          if (!season || parseInt(season, 10) < currentSeason) continue;
+          const draftRes = await fetch(`https://api.sleeper.app/v1/draft/${draftId}`);
+          if (!draftRes.ok) continue;
+          const draft = await draftRes.json();
+          const slotToRoster = draft.slot_to_roster_id || {};
+          const isSnake = (draft.type || "").toLowerCase() === "snake";
+          const round1Order: number[] = [];
+          for (let s = 1; s <= numTeams; s++) {
+            const rid = slotToRoster[String(s)];
+            if (rid != null) round1Order.push(Number(rid));
+          }
+          if (round1Order.length !== numTeams) continue;
+          for (let r = 1; r <= rounds; r++) {
+            seasonDraftOrder[season] = seasonDraftOrder[season] || {};
+            seasonDraftOrder[season][r] = r === 1 || !isSnake ? [...round1Order] : [...round1Order].reverse();
+          }
+        }
+      } catch (_) { /* non-fatal */ }
 
-      // Generate base picks for next 3 years
+      const picksToInsert: InsertDraftPick[] = [];
       for (let year = currentSeason; year < currentSeason + 3; year++) {
+        const seasonStr = String(year);
+        const draftOrder = seasonDraftOrder[seasonStr];
         for (let round = 1; round <= rounds; round++) {
+          const roundOrder = draftOrder?.[round];
           for (const roster of rostersData) {
-            // Check if this specific pick was traded
-            const traded = tradedPicks.find((tp: any) => 
-              tp.season === String(year) && 
-              tp.round === round && 
-              tp.roster_id === roster.roster_id // Original owner
+            const traded = tradedPicks.find((tp: any) =>
+              tp.season === seasonStr && tp.round === round && tp.roster_id === roster.roster_id
             );
-
+            let pickSlot: string | null = null;
+            if (roundOrder) {
+              const pos = roundOrder.indexOf(roster.roster_id);
+              if (pos >= 0) pickSlot = `${round}.${String(pos + 1).padStart(2, "0")}`;
+            }
             picksToInsert.push({
               leagueId: leagueId,
-              season: String(year),
+              season: seasonStr,
               round: round,
-              rosterId: roster.roster_id, // Original Owner
-              ownerId: traded ? traded.owner_id : roster.roster_id, // Current Owner (traded or original)
+              rosterId: roster.roster_id,
+              ownerId: traded ? traded.owner_id : roster.roster_id,
               previousOwnerId: traded ? traded.previous_owner_id : null,
-              pickSlot: null, // Default empty, user can override
+              pickSlot,
             });
           }
         }
       }
-      
-      // Look up owner roster IDs for traded picks (Sleeper traded_picks uses roster_id for original, owner_id for current)
-      // Note: Traded picks API owner_id is the ROSTER ID of the new owner usually? 
-      // Wait, Sleeper API docs say owner_id in traded_picks is the roster_id of the new owner.
-      // And in my schema ownerId is rosterId. So this matches.
-      
       await storage.upsertPicks(picksToInsert);
 
       res.json({ success: true });
@@ -157,13 +180,26 @@ export async function registerRoutes(
       teamNeeds[r.rosterId] = calculateTeamNeeds(r, rosters);
     });
 
+    const teamOrder = await storage.getLeagueTeamOrder(leagueId);
     res.json({
       league,
       rosters,
       users,
       picks,
-      teamNeeds
+      teamNeeds,
+      ...(teamOrder && { teamOrder }),
     });
+  });
+
+  // PUT League Team Order (sticky draft board columns)
+  app.put(api.league.teamOrder.path, async (req, res) => {
+    const leagueId = req.params.id;
+    const league = await storage.getLeague(leagueId);
+    if (!league) return res.status(404).json({ message: "League not found" });
+    const order = Array.isArray(req.body?.order) ? req.body.order.map(Number).filter((n: number) => Number.isFinite(n)) : [];
+    if (order.length === 0) return res.status(400).json({ message: "order must be a non-empty array of roster IDs" });
+    await storage.setLeagueTeamOrder(leagueId, order);
+    res.json({ success: true });
   });
 
   // UPDATE Pick

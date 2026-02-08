@@ -52,6 +52,27 @@ export function useLeague(id: string) {
   });
 }
 
+// PUT /api/league/:id/team-order - Save draft board column order (sticky)
+export function useUpdateLeagueTeamOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ leagueId, order }: { leagueId: string; order: number[] }) => {
+      const url = buildUrl(api.league.teamOrder.path, { id: leagueId });
+      const res = await fetch(url, {
+        method: api.league.teamOrder.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(api.league.teamOrder.input.parse({ order })),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to save team order");
+      return api.league.teamOrder.responses[200].parse(await res.json());
+    },
+    onSuccess: (_, { leagueId }) => {
+      queryClient.invalidateQueries({ queryKey: [api.league.get.path, leagueId] });
+    },
+  });
+}
+
 // PATCH /api/picks/:id - Update pick slot manually
 export function useUpdatePick() {
   const queryClient = useQueryClient();

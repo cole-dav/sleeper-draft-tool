@@ -23,6 +23,7 @@ const handler: Handler = async (event) => {
   const path = event.rawUrl ? new URL(event.rawUrl).pathname : event.path;
   const pathMatch = path.match(/^\/api\/league\/([^/]+)\/fetch$/);
   const getMatch = path.match(/^\/api\/league\/([^/]+)$/);
+  const teamOrderMatch = path.match(/^\/api\/league\/([^/]+)\/team-order$/);
   const pickMatch = path.match(/^\/api\/picks\/(\d+)$/);
 
   try {
@@ -67,27 +68,66 @@ const handler: Handler = async (event) => {
 
       await storage.clearPicks(leagueId);
 
-      const picksToInsert: InsertDraftPick[] = [];
       const currentSeason = parseInt(String(leagueData.season), 10) || new Date().getFullYear();
       const rounds = leagueData.settings?.draft_rounds ?? 3;
+      const numTeams = rostersData.length;
 
+      const seasonDraftOrder: Record<string, Record<number, number[]>> = {};
+      try {
+        const draftsRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/drafts`);
+        const draftsRaw = await draftsRes.json();
+        const draftsList = Array.isArray(draftsRaw) ? draftsRaw : [];
+        for (const d of draftsList) {
+          const draftId = d.draft_id;
+          const season = String(d.season || "");
+          if (!season || parseInt(season, 10) < currentSeason) continue;
+          const draftRes = await fetch(`https://api.sleeper.app/v1/draft/${draftId}`);
+          if (!draftRes.ok) continue;
+          const draft = await draftRes.json();
+          const slotToRoster = draft.slot_to_roster_id || {};
+          const isSnake = (draft.type || "").toLowerCase() === "snake";
+          const round1Order: number[] = [];
+          for (let s = 1; s <= numTeams; s++) {
+            const rid = slotToRoster[String(s)];
+            if (rid != null) round1Order.push(Number(rid));
+          }
+          if (round1Order.length !== numTeams) continue;
+          const byRound: Record<number, number[]> = {};
+          for (let r = 1; r <= rounds; r++) {
+            byRound[r] = r === 1 || !isSnake ? [...round1Order] : [...round1Order].reverse();
+          }
+          seasonDraftOrder[season] = byRound;
+        }
+      } catch (_) {
+        /* non-fatal */
+      }
+
+      const picksToInsert: InsertDraftPick[] = [];
       for (let year = currentSeason; year < currentSeason + 3; year++) {
+        const seasonStr = String(year);
+        const draftOrder = seasonDraftOrder[seasonStr];
         for (let round = 1; round <= rounds; round++) {
+          const roundOrder = draftOrder?.[round];
           for (const roster of rostersData) {
             const traded = tradedPicks.find(
               (tp: any) =>
-                tp.season === String(year) &&
+                tp.season === seasonStr &&
                 tp.round === round &&
                 tp.roster_id === roster.roster_id
             );
+            let pickSlot: string | null = null;
+            if (roundOrder) {
+              const pos = roundOrder.indexOf(roster.roster_id);
+              if (pos >= 0) pickSlot = `${round}.${String(pos + 1).padStart(2, "0")}`;
+            }
             picksToInsert.push({
               leagueId: leagueId,
-              season: String(year),
+              season: seasonStr,
               round: round,
               rosterId: roster.roster_id,
               ownerId: traded ? traded.owner_id : roster.roster_id,
               previousOwnerId: traded ? traded.previous_owner_id : null,
-              pickSlot: null,
+              pickSlot,
             });
           }
         }
@@ -110,7 +150,19 @@ const handler: Handler = async (event) => {
         teamNeeds[r.rosterId] = calculateTeamNeeds(r, rosters);
       });
 
-      return jsonResponse(200, { league, rosters, users, picks, teamNeeds });
+      const teamOrder = await storage.getLeagueTeamOrder(leagueId);
+      return jsonResponse(200, { league, rosters, users, picks, teamNeeds, ...(teamOrder && { teamOrder }) });
+    }
+
+    if (event.httpMethod === "PUT" && teamOrderMatch) {
+      const leagueId = teamOrderMatch[1];
+      const league = await storage.getLeague(leagueId);
+      if (!league) return jsonResponse(404, { message: "League not found" });
+      const body = event.body ? JSON.parse(event.body) : {};
+      const order = Array.isArray(body?.order) ? body.order.map(Number).filter((n: number) => Number.isFinite(n)) : [];
+      if (order.length === 0) return jsonResponse(400, { message: "order must be a non-empty array of roster IDs" });
+      await storage.setLeagueTeamOrder(leagueId, order);
+      return jsonResponse(200, { success: true });
     }
 
     if (event.httpMethod === "PATCH" && pickMatch) {
