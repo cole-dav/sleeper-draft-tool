@@ -63,19 +63,65 @@ export default function Dashboard() {
     setSelectedSeasons(new Set(allSeasons));
   }
 
-  if (teamOrder.length === 0 && rosters.length > 0) {
+  const getRecordOrder = () => {
     // Sort rosters by record: losses (desc) then wins (asc)
     // Worst record to the left means most losses, then fewest wins
     const sortedRosters = [...rosters].sort((a, b) => {
       const aLosses = (a.settings as any)?.losses || 0;
       const bLosses = (b.settings as any)?.losses || 0;
       if (aLosses !== bLosses) return bLosses - aLosses;
-      
+
       const aWins = (a.settings as any)?.wins || 0;
       const bWins = (b.settings as any)?.wins || 0;
       return aWins - bWins;
     });
-    setTeamOrder(sortedRosters.map(r => r.rosterId));
+    return sortedRosters.map(r => r.rosterId);
+  };
+
+  const getNextDraftOrder = () => {
+    // Prefer explicit draft positions from the next draft, if available.
+    const rosterPositions = rosters.map(r => {
+      const rawPosition = (r.settings as any)?.draft_position ?? (r.settings as any)?.draftPosition;
+      const position = typeof rawPosition === "number" ? rawPosition : Number(rawPosition);
+      return { rosterId: r.rosterId, position };
+    });
+    const hasAllPositions = rosterPositions.every(p => Number.isFinite(p.position));
+    if (hasAllPositions) {
+      return rosterPositions
+        .sort((a, b) => (a.position as number) - (b.position as number))
+        .map(p => p.rosterId);
+    }
+
+    const allSeasons = Array.from(new Set(picks.map(p => p.season)))
+      .map(s => Number(s))
+      .filter(n => Number.isFinite(n))
+      .sort((a, b) => a - b);
+    const nextDraftSeason = allSeasons[0] ? String(allSeasons[0]) : null;
+
+    if (nextDraftSeason) {
+      const roundOnePicks = picks.filter(p => p.season === nextDraftSeason && p.round === 1);
+      const parsePickSlot = (slot: string | null) => {
+        if (!slot) return null;
+        const match = slot.match(/\d+(\.\d+)?/);
+        return match ? Number(match[0]) : null;
+      };
+      const parsed = roundOnePicks.map(p => ({
+        rosterId: p.rosterId,
+        order: parsePickSlot(p.pickSlot)
+      }));
+      const hasAllPickSlots = parsed.length === rosters.length && parsed.every(p => Number.isFinite(p.order));
+      if (hasAllPickSlots) {
+        return parsed
+          .sort((a, b) => (a.order as number) - (b.order as number))
+          .map(p => p.rosterId);
+      }
+    }
+
+    return getRecordOrder();
+  };
+
+  if (teamOrder.length === 0 && rosters.length > 0) {
+    setTeamOrder(getNextDraftOrder());
   }
   
   const toggleSeason = (season: string) => {
