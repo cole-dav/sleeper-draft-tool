@@ -4,11 +4,193 @@ import { api } from "../../shared/routes";
 import type { InsertDraftPick } from "../../shared/schema";
 import { z } from "zod";
 
-function calculateTeamNeeds(_roster: any, _allRosters: any[]) {
-  const positions = ["QB", "RB", "WR", "TE"];
-  return positions
-    .map((pos) => ({ position: pos, score: Math.floor(Math.random() * 100) }))
-    .sort((a, b) => b.score - a.score);
+type PlayerMeta = {
+  id: string;
+  fullName: string;
+  position: string | null;
+  team: string | null;
+  fantasyPositions: string[];
+};
+
+const POSITIONS = ["QB", "RB", "WR", "TE"];
+const PLAYER_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+let cachedPlayers: { fetchedAt: number; map: Map<string, PlayerMeta> } | null = null;
+
+type FantasyCalcValue = {
+  player: {
+    sleeperId: string | number | null;
+    position: string | null;
+  };
+  value: number;
+};
+
+const FANTASY_CALC_CACHE_TTL_MS = 60 * 60 * 1000;
+const fantasyCalcCache = new Map<string, { fetchedAt: number; map: Map<string, number> }>();
+
+function getRosterPositions(settings: any): string[] {
+  const positions = settings?.roster_positions ?? settings?.rosterPositions ?? [];
+  return Array.isArray(positions) ? positions.map(String) : [];
+}
+
+function resolveNumQbs(settings: any): number {
+  const positions = getRosterPositions(settings);
+  const qbSlots = positions.filter((p) => p === "QB").length;
+  const hasSuperFlex = positions.some((p) => ["SF", "SUPER_FLEX", "SUPERFLEX", "OP"].includes(p));
+  return qbSlots >= 2 || hasSuperFlex ? 2 : 1;
+}
+
+function resolvePpr(settings: any): number {
+  const scoring = settings?.scoringSettings ?? settings?.scoring_settings ?? settings?.scoring ?? {};
+  const candidate = scoring?.rec ?? scoring?.recp ?? scoring?.ppr ?? settings?.ppr;
+  return Number.isFinite(Number(candidate)) ? Number(candidate) : 1;
+}
+
+async function getFantasyCalcValues(params: { isDynasty: boolean; numQbs: number; numTeams: number; ppr: number }) {
+  const key = JSON.stringify(params);
+  const now = Date.now();
+  const cached = fantasyCalcCache.get(key);
+  if (cached && now - cached.fetchedAt < FANTASY_CALC_CACHE_TTL_MS) {
+    return cached.map;
+  }
+
+  const url = new URL("https://api.fantasycalc.com/values/current");
+  url.searchParams.set("isDynasty", String(params.isDynasty));
+  url.searchParams.set("numQbs", String(params.numQbs));
+  url.searchParams.set("numTeams", String(params.numTeams));
+  url.searchParams.set("ppr", String(params.ppr));
+
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Failed to fetch FantasyCalc values");
+  const data = (await res.json()) as FantasyCalcValue[];
+
+  const map = new Map<string, number>();
+  (Array.isArray(data) ? data : []).forEach((entry) => {
+    const sleeperId = entry?.player?.sleeperId;
+    const value = entry?.value;
+    if (sleeperId == null || !Number.isFinite(Number(value))) return;
+    map.set(String(sleeperId), Number(value));
+  });
+
+  fantasyCalcCache.set(key, { fetchedAt: now, map });
+  return map;
+}
+
+async function getSleeperPlayersMap(): Promise<Map<string, PlayerMeta>> {
+  const now = Date.now();
+  if (cachedPlayers && now - cachedPlayers.fetchedAt < PLAYER_CACHE_TTL_MS) {
+    return cachedPlayers.map;
+  }
+
+  const res = await fetch("https://api.sleeper.app/v1/players/nfl");
+  if (!res.ok) throw new Error("Failed to fetch Sleeper players");
+  const data = await res.json();
+
+  const map = new Map<string, PlayerMeta>();
+  Object.values(data || {}).forEach((p: any) => {
+    const id = String(p.player_id ?? "");
+    if (!id) return;
+    const fullName = String(p.full_name || `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim()).trim();
+    const position = (p.position || p.fantasy_positions?.[0] || null) as string | null;
+    map.set(id, {
+      id,
+      fullName: fullName || id,
+      position,
+      team: p.team ?? null,
+      fantasyPositions: Array.isArray(p.fantasy_positions) ? p.fantasy_positions : [],
+    });
+  });
+
+  cachedPlayers = { fetchedAt: now, map };
+  return map;
+}
+
+function getRosterPlayerIds(roster: any): string[] {
+  const settings = roster?.settings as any;
+  const players = Array.isArray(settings?.players) ? settings.players : Array.isArray(roster?.players) ? roster.players : [];
+  return players.map((p: any) => String(p));
+}
+
+function hashStringToInt(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  return hash >>> 0;
+}
+
+function deterministicScore(seed: string): number {
+  return hashStringToInt(seed) % 101;
+}
+
+function strengthToNeedScore(strength: number, avg: number): number {
+  const safeAvg = Math.max(avg, 1);
+  const ratio = strength / safeAvg;
+  const score = 50 + (1 - ratio) * 50;
+  return Math.max(0, Math.min(100, score));
+}
+
+function computeRosterStrengths(
+  rosters: any[],
+  playersMap: Map<string, PlayerMeta> | null,
+  valueBySleeperId?: Map<string, number> | null,
+) {
+  if (!playersMap) return null;
+
+  const strengthsByRoster: Record<number, Record<string, number>> = {};
+  const leagueTotals: Record<string, number> = Object.fromEntries(POSITIONS.map((pos) => [pos, 0]));
+
+  for (const roster of rosters) {
+    const rosterStrengths: Record<string, number> = Object.fromEntries(POSITIONS.map((pos) => [pos, 0]));
+    const playerIds = getRosterPlayerIds(roster);
+    for (const playerId of playerIds) {
+      const player = playersMap.get(playerId);
+      if (!player) continue;
+      const position = player.position ?? player.fantasyPositions?.[0];
+      if (!position || !POSITIONS.includes(position)) continue;
+      const value = valueBySleeperId?.get(player.id) ?? 1;
+      rosterStrengths[position] += value;
+    }
+    strengthsByRoster[roster.rosterId] = rosterStrengths;
+    for (const pos of POSITIONS) {
+      leagueTotals[pos] += rosterStrengths[pos];
+    }
+  }
+
+  const rosterCount = Math.max(rosters.length, 1);
+  const leagueAverages: Record<string, number> = Object.fromEntries(
+    POSITIONS.map((pos) => [pos, leagueTotals[pos] / rosterCount])
+  );
+
+  return { strengthsByRoster, leagueAverages };
+}
+
+function fallbackTeamNeeds(roster: any) {
+  const settings = roster?.settings as any;
+  const wins = Number(settings?.wins ?? 0);
+  const losses = Number(settings?.losses ?? 0);
+  const fpts = Number(settings?.fpts ?? 0);
+  const seedBase = `${roster?.rosterId ?? "0"}:${wins}:${losses}:${fpts}`;
+
+  return POSITIONS.map((pos) => ({
+    position: pos,
+    score: deterministicScore(`${seedBase}:${pos}`),
+  })).sort((a, b) => b.score - a.score);
+}
+
+function calculateTeamNeeds(
+  roster: any,
+  strengthsByRoster?: Record<number, Record<string, number>>,
+  leagueAverages?: Record<string, number>,
+) {
+  if (!strengthsByRoster || !leagueAverages) return fallbackTeamNeeds(roster);
+  const rosterStrengths = strengthsByRoster[roster.rosterId];
+  if (!rosterStrengths) return fallbackTeamNeeds(roster);
+
+  return POSITIONS.map((pos) => ({
+    position: pos,
+    score: strengthToNeedScore(rosterStrengths[pos] ?? 0, leagueAverages[pos] ?? 0),
+  })).sort((a, b) => b.score - a.score);
 }
 
 function jsonResponse(statusCode: number, body: unknown) {
@@ -39,7 +221,11 @@ const handler: Handler = async (event) => {
         totalRosters: leagueData.total_rosters ?? 12,
         season: String(leagueData.season || new Date().getFullYear()),
         avatar: leagueData.avatar ?? null,
-        settings: leagueData.settings ?? {},
+        settings: {
+          ...(leagueData.settings ?? {}),
+          roster_positions: leagueData.roster_positions ?? [],
+          scoring_settings: leagueData.scoring_settings ?? {},
+        },
       });
 
       const usersRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`);
@@ -58,7 +244,13 @@ const handler: Handler = async (event) => {
         leagueId: leagueId,
         rosterId: r.roster_id,
         ownerId: r.owner_id ?? null,
-        settings: r.settings ?? null,
+        settings: {
+          ...(r.settings ?? {}),
+          players: r.players ?? [],
+          starters: r.starters ?? [],
+          taxi: r.taxi ?? [],
+          reserve: r.reserve ?? [],
+        },
       }));
       await storage.upsertRosters(rostersList);
 
@@ -145,13 +337,70 @@ const handler: Handler = async (event) => {
       const rosters = await storage.getRosters(leagueId);
       const users = await storage.getUsers(leagueId);
       const picks = await storage.getPicks(leagueId);
+      const hasPlayers = rosters.some((r) => Array.isArray((r.settings as any)?.players) && (r.settings as any).players.length > 0);
+      const playersMap = hasPlayers ? await getSleeperPlayersMap() : null;
+      let fantasyValues: Map<string, number> | null = null;
+      if (playersMap) {
+        try {
+          const settings = league.settings as any;
+          fantasyValues = await getFantasyCalcValues({
+            isDynasty: true,
+            numQbs: resolveNumQbs(settings),
+            numTeams: Number(league.totalRosters) || 12,
+            ppr: resolvePpr(settings),
+          });
+        } catch (err) {
+          console.warn("FantasyCalc fetch failed; falling back to roster counts.", err);
+        }
+      }
+      const strengthData = computeRosterStrengths(rosters, playersMap, fantasyValues);
       const teamNeeds: Record<number, { position: string; score: number }[]> = {};
       rosters.forEach((r) => {
-        teamNeeds[r.rosterId] = calculateTeamNeeds(r, rosters);
+        teamNeeds[r.rosterId] = calculateTeamNeeds(
+          r,
+          strengthData?.strengthsByRoster,
+          strengthData?.leagueAverages
+        );
       });
 
+      const teamPlayers: Record<number, any[]> = {};
+      if (playersMap) {
+        const positionOrder: Record<string, number> = {
+          QB: 1,
+          RB: 2,
+          WR: 3,
+          TE: 4,
+        };
+        rosters.forEach((r) => {
+          const ids = getRosterPlayerIds(r);
+          if (!ids.length) return;
+          const starters = new Set((r.settings as any)?.starters?.map(String) ?? []);
+          const players = ids
+            .map((id) => {
+              const player = playersMap.get(String(id));
+              if (!player) return null;
+              return {
+                id: player.id,
+                name: player.fullName,
+                position: player.position ?? "UNK",
+                team: player.team ?? null,
+                isStarter: starters.has(player.id),
+              };
+            })
+            .filter(Boolean) as Array<{ id: string; name: string; position: string; team: string | null; isStarter: boolean }>;
+
+          players.sort((a, b) => {
+            const aPos = positionOrder[a.position] ?? 99;
+            const bPos = positionOrder[b.position] ?? 99;
+            if (aPos !== bPos) return aPos - bPos;
+            return a.name.localeCompare(b.name);
+          });
+          teamPlayers[r.rosterId] = players;
+        });
+      }
+
       const teamOrder = await storage.getLeagueTeamOrder(leagueId);
-      return jsonResponse(200, { league, rosters, users, picks, teamNeeds, ...(teamOrder && { teamOrder }) });
+      return jsonResponse(200, { league, rosters, users, picks, teamNeeds, ...(teamOrder && { teamOrder }), ...(Object.keys(teamPlayers).length > 0 && { teamPlayers }) });
     }
 
     if (event.httpMethod === "PUT" && teamOrderMatch) {

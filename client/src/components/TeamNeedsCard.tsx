@@ -6,9 +6,10 @@ interface TeamNeedsCardProps {
   needs: { position: string; score: number }[];
   user?: User;
   roster: Roster;
+  onClick?: () => void;
 }
 
-export function TeamNeedsCard({ needs, user, roster }: TeamNeedsCardProps) {
+export function TeamNeedsCard({ needs, user, roster, onClick }: TeamNeedsCardProps) {
   // Sort needs by score descending (highest need first)
   const sortedNeeds = [...needs].sort((a, b) => b.score - a.score);
 
@@ -16,7 +17,19 @@ export function TeamNeedsCard({ needs, user, roster }: TeamNeedsCardProps) {
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-card/40 backdrop-blur-sm border border-white/5 rounded-lg p-3 hover:border-white/10 transition-colors"
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (!onClick) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className={`bg-card/40 backdrop-blur-sm border border-white/5 rounded-lg p-3 transition-colors ${
+        onClick ? "cursor-pointer hover:border-white/10 hover:bg-white/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" : ""
+      }`}
     >
       <div className="flex items-center gap-2 mb-3">
         {user?.avatar ? (

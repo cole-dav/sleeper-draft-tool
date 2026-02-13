@@ -67,6 +67,14 @@ export type InsertRoster = typeof rosters.$inferInsert;
 export type InsertUser = typeof users.$inferInsert;
 export type InsertDraftPick = typeof draftPicks.$inferInsert;
 
+export type TeamPlayerSummary = {
+  id: string;
+  name: string;
+  position: string;
+  team: string | null;
+  isStarter: boolean;
+};
+
 // API Response Types
 export type LeagueDataResponse = {
   league: League;
@@ -75,4 +83,5 @@ export type LeagueDataResponse = {
   picks: DraftPick[];
   teamNeeds: Record<number, { position: string; score: number }[]>; // rosterId -> needs
   teamOrder?: number[]; // saved column order (roster IDs), if set
+  teamPlayers?: Record<number, TeamPlayerSummary[]>; // rosterId -> players (optional if not synced)
 };
