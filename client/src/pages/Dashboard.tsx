@@ -126,8 +126,16 @@ export default function Dashboard() {
     setIsLoggingIn(true);
     setLoginError(null);
     try {
-      const res = await fetch(`/api/sleeper/user/${encodeURIComponent(loginUsername.trim())}`);
-      if (!res.ok) throw new Error("User not found on Sleeper");
+      const lookup = loginUsername.trim();
+      const res = await fetch(`/api/sleeper/user/${encodeURIComponent(lookup)}`);
+      if (!res.ok) {
+        let msg = "User not found on Sleeper";
+        try {
+          const data = await res.json();
+          if (data?.message) msg = data.message;
+        } catch {}
+        throw new Error(msg);
+      }
       const user = await res.json();
       const payload: SleeperUser = {
         userId: user.userId,

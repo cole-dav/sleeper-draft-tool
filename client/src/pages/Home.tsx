@@ -24,8 +24,16 @@ export default function Home() {
     try {
       if (username.trim()) {
         setIsLookingUpUser(true);
-        const res = await fetch(`/api/sleeper/user/${encodeURIComponent(username.trim())}`);
-        if (!res.ok) throw new Error("Sleeper username not found");
+        const lookup = username.trim();
+        const res = await fetch(`/api/sleeper/user/${encodeURIComponent(lookup)}`);
+        if (!res.ok) {
+          let msg = "Sleeper username not found";
+          try {
+            const data = await res.json();
+            if (data?.message) msg = data.message;
+          } catch {}
+          throw new Error(msg);
+        }
         const user = await res.json();
         setSleeperUser({
           userId: user.userId,

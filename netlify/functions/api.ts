@@ -203,12 +203,27 @@ function jsonResponse(statusCode: number, body: unknown) {
 
 const handler: Handler = async (event) => {
   const path = event.rawUrl ? new URL(event.rawUrl).pathname : event.path;
+  const sleeperUserMatch = path.match(/^\/api\/sleeper\/user\/([^/]+)$/);
   const pathMatch = path.match(/^\/api\/league\/([^/]+)\/fetch$/);
   const getMatch = path.match(/^\/api\/league\/([^/]+)$/);
   const teamOrderMatch = path.match(/^\/api\/league\/([^/]+)\/team-order$/);
   const pickMatch = path.match(/^\/api\/picks\/(\d+)$/);
+  const pickPredictionMatch = path.match(/^\/api\/picks\/(\d+)\/prediction$/);
 
   try {
+    if (event.httpMethod === "GET" && sleeperUserMatch) {
+      const username = decodeURIComponent(sleeperUserMatch[1]);
+      const userRes = await fetch(`https://api.sleeper.app/v1/user/${encodeURIComponent(username)}`);
+      if (!userRes.ok) return jsonResponse(404, { message: "User not found" });
+      const user = await userRes.json();
+      return jsonResponse(200, {
+        userId: user.user_id,
+        username: user.username,
+        displayName: user.display_name,
+        avatar: user.avatar,
+      });
+    }
+
     if (event.httpMethod === "POST" && pathMatch) {
       const leagueId = pathMatch[1];
       const leagueRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}`);
@@ -337,6 +352,8 @@ const handler: Handler = async (event) => {
       const rosters = await storage.getRosters(leagueId);
       const users = await storage.getUsers(leagueId);
       const picks = await storage.getPicks(leagueId);
+      const userId = event.headers?.["x-sleeper-user-id"];
+      const pickPredictions = userId ? await storage.getPickPredictions(leagueId, userId) : undefined;
       const hasPlayers = rosters.some((r) => Array.isArray((r.settings as any)?.players) && (r.settings as any).players.length > 0);
       const playersMap = hasPlayers ? await getSleeperPlayersMap() : null;
       let fantasyValues: Map<string, number> | null = null;
@@ -400,7 +417,16 @@ const handler: Handler = async (event) => {
       }
 
       const teamOrder = await storage.getLeagueTeamOrder(leagueId);
-      return jsonResponse(200, { league, rosters, users, picks, teamNeeds, ...(teamOrder && { teamOrder }), ...(Object.keys(teamPlayers).length > 0 && { teamPlayers }) });
+      return jsonResponse(200, {
+        league,
+        rosters,
+        users,
+        picks,
+        teamNeeds,
+        ...(pickPredictions && { pickPredictions }),
+        ...(teamOrder && { teamOrder }),
+        ...(Object.keys(teamPlayers).length > 0 && { teamPlayers }),
+      });
     }
 
     if (event.httpMethod === "PUT" && teamOrderMatch) {
@@ -421,6 +447,23 @@ const handler: Handler = async (event) => {
       const updated = await storage.updatePick(id, input);
       if (!updated) return jsonResponse(404, { message: "Pick not found" });
       return jsonResponse(200, updated);
+    }
+
+    if (event.httpMethod === "POST" && pickPredictionMatch) {
+      const id = parseInt(pickPredictionMatch[1], 10);
+      const userId = event.headers?.["x-sleeper-user-id"];
+      if (!userId) return jsonResponse(401, { message: "Missing user context" });
+      const body = event.body ? JSON.parse(event.body) : {};
+      const input = api.picks.prediction.input.parse(body);
+      const pick = await storage.getPickById(id);
+      if (!pick) return jsonResponse(404, { message: "Pick not found" });
+      const trimmed = String(input.comment ?? "").trim();
+      if (!trimmed) {
+        await storage.deletePickPrediction(id, userId);
+      } else {
+        await storage.upsertPickPrediction(id, userId, trimmed);
+      }
+      return jsonResponse(200, { success: true });
     }
 
     return jsonResponse(404, { message: "Not found" });
