@@ -258,6 +258,12 @@ export async function registerRoutes(
       const tradedRes = await fetch(`https://api.sleeper.app/v1/league/${leagueId}/traded_picks`);
       const tradedPicks = await tradedRes.json();
 
+      const existingPicks = await storage.getPicks(leagueId);
+      const existingComments = new Map<string, string | null>();
+      for (const pick of existingPicks) {
+        existingComments.set(`${pick.season}|${pick.round}|${pick.rosterId}`, pick.comment ?? null);
+      }
+
       await storage.clearPicks(leagueId);
 
       const currentSeason = parseInt(leagueData.season);
@@ -305,6 +311,7 @@ export async function registerRoutes(
               const pos = roundOrder.indexOf(roster.roster_id);
               if (pos >= 0) pickSlot = `${round}.${String(pos + 1).padStart(2, "0")}`;
             }
+            const existingComment = existingComments.get(`${seasonStr}|${round}|${roster.roster_id}`) ?? null;
             picksToInsert.push({
               leagueId: leagueId,
               season: seasonStr,
@@ -313,6 +320,7 @@ export async function registerRoutes(
               ownerId: traded ? traded.owner_id : roster.roster_id,
               previousOwnerId: traded ? traded.previous_owner_id : null,
               pickSlot,
+              comment: existingComment,
             });
           }
         }
