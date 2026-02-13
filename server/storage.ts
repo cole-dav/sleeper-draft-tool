@@ -36,6 +36,9 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private isUndefinedTableError(err: unknown): boolean {
+    return Boolean(err && typeof err === "object" && "code" in err && (err as any).code === "42P01");
+  }
   async getLeague(leagueId: string): Promise<League | undefined> {
     const [league] = await db.select().from(leagues).where(eq(leagues.leagueId, leagueId));
     return league;
@@ -122,14 +125,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLeagueTeamOrder(leagueId: string): Promise<number[] | undefined> {
-    const [row] = await db.select().from(leagueTeamOrder).where(eq(leagueTeamOrder.leagueId, leagueId));
-    if (!row?.order || !Array.isArray(row.order)) return undefined;
-    return row.order as number[];
+    try {
+      const [row] = await db.select().from(leagueTeamOrder).where(eq(leagueTeamOrder.leagueId, leagueId));
+      if (!row?.order || !Array.isArray(row.order)) return undefined;
+      return row.order as number[];
+    } catch (err) {
+      if (this.isUndefinedTableError(err)) return undefined;
+      throw err;
+    }
   }
 
   async setLeagueTeamOrder(leagueId: string, order: number[]): Promise<void> {
-    await db.insert(leagueTeamOrder).values({ leagueId, order })
-      .onConflictDoUpdate({ target: leagueTeamOrder.leagueId, set: { order } });
+    try {
+      await db.insert(leagueTeamOrder).values({ leagueId, order })
+        .onConflictDoUpdate({ target: leagueTeamOrder.leagueId, set: { order } });
+    } catch (err) {
+      if (this.isUndefinedTableError(err)) return;
+      throw err;
+    }
   }
 }
 
