@@ -45,6 +45,80 @@ export default function Dashboard() {
   const updateTeamOrderMutation = useUpdateLeagueTeamOrder();
   const teamOrderInitialized = useRef(false);
 
+  useEffect(() => {
+    if (!data?.picks?.length || selectedSeasons.size > 0) return;
+    const allSeasons = Array.from(new Set(data.picks.map(p => p.season))).sort();
+    setSelectedSeasons(new Set(allSeasons));
+  }, [data, selectedSeasons.size]);
+
+  useEffect(() => {
+    if (!data?.rosters?.length || teamOrderInitialized.current) return;
+    teamOrderInitialized.current = true;
+    if (data.teamOrder?.length) {
+      setTeamOrder(data.teamOrder);
+    } else {
+      const rosters = data.rosters;
+      const picks = data.picks;
+      const getRecordOrder = () => {
+        const sortedRosters = [...rosters].sort((a, b) => {
+          const aLosses = (a.settings as any)?.losses || 0;
+          const bLosses = (b.settings as any)?.losses || 0;
+          if (aLosses !== bLosses) return bLosses - aLosses;
+          const aWins = (a.settings as any)?.wins || 0;
+          const bWins = (b.settings as any)?.wins || 0;
+          return aWins - bWins;
+        });
+        return sortedRosters.map(r => r.rosterId);
+      };
+      const getNextDraftOrder = () => {
+        const rosterPositions = rosters.map(r => {
+          const rawPosition = (r.settings as any)?.draft_position ?? (r.settings as any)?.draftPosition;
+          const position = typeof rawPosition === "number" ? rawPosition : Number(rawPosition);
+          return { rosterId: r.rosterId, position };
+        });
+        const hasAllPositions = rosterPositions.every(p => Number.isFinite(p.position));
+        if (hasAllPositions) {
+          return rosterPositions
+            .sort((a, b) => (a.position as number) - (b.position as number))
+            .map(p => p.rosterId);
+        }
+
+        const allSeasons = Array.from(new Set(picks.map(p => p.season)))
+          .map(s => Number(s))
+          .filter(n => Number.isFinite(n))
+          .sort((a, b) => a - b);
+        const nextDraftSeason = allSeasons[0] ? String(allSeasons[0]) : null;
+
+        if (nextDraftSeason) {
+          const roundOnePicks = picks.filter(p => p.season === nextDraftSeason && p.round === 1);
+          const parsePickSlot = (slot: string | null) => {
+            if (!slot) return null;
+            const match = slot.match(/\d+(\.\d+)?/);
+            return match ? Number(match[0]) : null;
+          };
+          const parsed = roundOnePicks.map(p => ({
+            rosterId: p.rosterId,
+            order: parsePickSlot(p.pickSlot)
+          }));
+          const hasAllPickSlots = parsed.length === rosters.length && parsed.every(p => Number.isFinite(p.order));
+          if (hasAllPickSlots) {
+            return parsed
+              .sort((a, b) => (a.order as number) - (b.order as number))
+              .map(p => p.rosterId);
+          }
+        }
+
+        return getRecordOrder();
+      };
+      setTeamOrder(getNextDraftOrder());
+    }
+  }, [data]);
+
+  useEffect(() => {
+    teamOrderInitialized.current = false;
+    setTeamOrder([]);
+  }, [leagueId]);
+
   if (isLoading) return <DashboardSkeleton />;
 
   if (error || !data) return (
@@ -63,12 +137,6 @@ export default function Dashboard() {
 
   const { league, rosters, users, picks, teamNeeds } = data;
   const teamPlayers = data.teamPlayers ?? {};
-
-  // Initialize selectedSeasons and teamOrder on first load
-  if (selectedSeasons.size === 0) {
-    const allSeasons = Array.from(new Set(picks.map(p => p.season))).sort();
-    setSelectedSeasons(new Set(allSeasons));
-  }
 
   const getRecordOrder = () => {
     // Sort rosters by record: losses (desc) then wins (asc)
@@ -126,21 +194,6 @@ export default function Dashboard() {
 
     return getRecordOrder();
   };
-
-  useEffect(() => {
-    if (!data?.rosters?.length || teamOrderInitialized.current) return;
-    teamOrderInitialized.current = true;
-    if (data.teamOrder?.length) {
-      setTeamOrder(data.teamOrder);
-    } else {
-      setTeamOrder(getNextDraftOrder());
-    }
-  }, [data]);
-
-  useEffect(() => {
-    teamOrderInitialized.current = false;
-    setTeamOrder([]);
-  }, [leagueId]);
 
   const toggleSeason = (season: string) => {
     const newSeasons = new Set(selectedSeasons);
