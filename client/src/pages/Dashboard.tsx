@@ -1,5 +1,5 @@
 import { useParams, Link } from "wouter";
-import { useLeague, useUpdatePick, useUpdateLeagueTeamOrder } from "@/hooks/use-league";
+import { useLeague, useSavePickPrediction, useUpdateLeagueTeamOrder } from "@/hooks/use-league";
 import { PickCard } from "@/components/PickCard";
 import { TeamNeedsCard } from "@/components/TeamNeedsCard";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ArrowLeft, RefreshCw, Trophy, Calendar, Users, HelpCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import { api } from "@shared/routes";
+import { clearSleeperUser, getSleeperUser, setSleeperUser, type SleeperUser } from "@/lib/sleeperUser";
 import {
   Tooltip,
   TooltipContent,
@@ -29,18 +29,13 @@ export default function Dashboard() {
   const [editingPickId, setEditingPickId] = useState<number | null>(null);
   const [commentValue, setCommentValue] = useState("");
   const [selectedTeamRosterId, setSelectedTeamRosterId] = useState<number | null>(null);
+  const [currentUser, setCurrentUser] = useState<SleeperUser | null>(() => getSleeperUser());
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
-  const updatePickMutation = useMutation({
-    mutationFn: async ({ id, comment }: { id: number; comment: string }) => {
-      const res = await apiRequest("PATCH", `/api/picks/${id}`, { comment });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.league.get.path, leagueId] });
-      setEditingPickId(null);
-      setCommentValue("");
-    },
-  });
+  const savePredictionMutation = useSavePickPrediction(leagueId);
 
   const updateTeamOrderMutation = useUpdateLeagueTeamOrder();
   const teamOrderInitialized = useRef(false);
@@ -119,6 +114,45 @@ export default function Dashboard() {
     setTeamOrder([]);
   }, [leagueId]);
 
+  useEffect(() => {
+    if (!savePredictionMutation.isSuccess) return;
+    setEditingPickId(null);
+    setCommentValue("");
+    savePredictionMutation.reset();
+  }, [savePredictionMutation.isSuccess]);
+
+  const handleLogin = async () => {
+    if (!loginUsername.trim()) return;
+    setIsLoggingIn(true);
+    setLoginError(null);
+    try {
+      const res = await fetch(`/api/sleeper/user/${encodeURIComponent(loginUsername.trim())}`);
+      if (!res.ok) throw new Error("User not found on Sleeper");
+      const user = await res.json();
+      const payload: SleeperUser = {
+        userId: user.userId,
+        username: user.username,
+        displayName: user.displayName,
+        avatar: user.avatar,
+      };
+      setSleeperUser(payload);
+      setCurrentUser(payload);
+      setLoginUsername("");
+      setShowLoginPrompt(false);
+      queryClient.invalidateQueries({ queryKey: [api.league.get.path, leagueId] });
+    } catch (err: any) {
+      setLoginError(err.message || "Failed to sign in");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    clearSleeperUser();
+    setCurrentUser(null);
+    setShowLoginPrompt(true);
+  };
+
   if (isLoading) return <DashboardSkeleton />;
 
   if (error || !data) return (
@@ -136,6 +170,7 @@ export default function Dashboard() {
   );
 
   const { league, rosters, users, picks, teamNeeds } = data;
+  const pickPredictions = data.pickPredictions ?? {};
   const teamPlayers = data.teamPlayers ?? {};
 
   const getRecordOrder = () => {
@@ -302,6 +337,25 @@ export default function Dashboard() {
             </div>
             
             <div className="flex items-center gap-2">
+              {currentUser ? (
+                <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground border border-white/10 rounded-full px-2 py-1">
+                  {currentUser.avatar ? (
+                    <img
+                      src={`https://sleepercdn.com/avatars/thumbs/${currentUser.avatar}`}
+                      alt={currentUser.displayName || currentUser.username}
+                      className="w-4 h-4 rounded-full"
+                    />
+                  ) : null}
+                  <span>Signed in as {currentUser.displayName || currentUser.username}</span>
+                  <Button variant="ghost" size="sm" className="h-6 px-2" onClick={handleLogout}>
+                    Switch
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setShowLoginPrompt(true)}>
+                  Sign In
+                </Button>
+              )}
               <Button onClick={() => refetch()} variant="outline" size="sm" className="gap-2 border-primary/20 hover:bg-primary/10 text-primary">
                 <RefreshCw className="h-4 w-4" />
                 Sync
@@ -312,6 +366,30 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
+        {(!currentUser || showLoginPrompt) && (
+          <section className="bg-secondary/30 border border-white/10 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center gap-3">
+            <div className="flex-1">
+              <div className="text-sm font-semibold">Sign in with Sleeper username</div>
+              <div className="text-xs text-muted-foreground">
+                Predictions are private to your username and won’t show for others.
+              </div>
+            </div>
+            <div className="w-full md:w-auto flex items-center gap-2">
+              <Input
+                value={loginUsername}
+                onChange={(e) => setLoginUsername(e.target.value)}
+                placeholder="Sleeper username"
+                className="h-9 w-full md:w-56 bg-background/60 border-white/10"
+              />
+              <Button onClick={handleLogin} disabled={isLoggingIn || !loginUsername.trim()}>
+                {isLoggingIn ? "Signing in..." : "Sign In"}
+              </Button>
+            </div>
+            {loginError && (
+              <div className="text-xs text-destructive">{loginError}</div>
+            )}
+          </section>
+        )}
         
         {/* Team Needs Section */}
         <section className="animate-in" style={{ animationDelay: '0.1s' }}>
@@ -430,6 +508,7 @@ export default function Dashboard() {
                                   {teamsInOrder.map((team) => {
                                     // The pick in this column belongs to the original owner (the team in the header)
                                     const pickForTeam = roundPicks.find(p => p.rosterId === team.rosterId);
+                                    const currentPrediction = pickForTeam ? (pickPredictions[pickForTeam.id] || "") : "";
                                     const isTransferred = pickForTeam?.ownerId && pickForTeam.ownerId !== team.rosterId;
                                     const currentOwnerRoster = rosters.find(r => r.rosterId === pickForTeam?.ownerId);
                                     const currentOwner = isTransferred ? getUser(currentOwnerRoster?.ownerId || null) : null;
@@ -467,8 +546,12 @@ export default function Dashboard() {
                                                 className="mt-2 min-h-[1.5rem] flex items-center justify-center cursor-text"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
+                                                  if (!currentUser) {
+                                                    setShowLoginPrompt(true);
+                                                    return;
+                                                  }
                                                   setEditingPickId(pickForTeam.id);
-                                                  setCommentValue(pickForTeam.comment || "");
+                                                  setCommentValue(currentPrediction);
                                                 }}
                                               >
                                                 {editingPickId === pickForTeam.id ? (
@@ -480,11 +563,8 @@ export default function Dashboard() {
                                                     className="h-6 text-[10px] py-0 px-1 bg-background/50 border-white/10"
                                                     onKeyDown={(e) => {
                                                       if (e.key === 'Enter') {
-                                                        if (commentValue !== (pickForTeam.comment || "")) {
-                                                          updatePickMutation.mutate({ 
-                                                            id: pickForTeam.id, 
-                                                            comment: commentValue 
-                                                          });
+                                                        if (commentValue !== currentPrediction) {
+                                                          savePredictionMutation.mutate({ id: pickForTeam.id, comment: commentValue });
                                                         } else {
                                                           setEditingPickId(null);
                                                         }
@@ -493,19 +573,16 @@ export default function Dashboard() {
                                                       }
                                                     }}
                                                     onBlur={() => {
-                                                      if (commentValue !== (pickForTeam.comment || "")) {
-                                                        updatePickMutation.mutate({ 
-                                                          id: pickForTeam.id, 
-                                                          comment: commentValue 
-                                                        });
+                                                      if (commentValue !== currentPrediction) {
+                                                        savePredictionMutation.mutate({ id: pickForTeam.id, comment: commentValue });
                                                       } else {
                                                         setEditingPickId(null);
                                                       }
                                                     }}
                                                   />
                                                 ) : (
-                                                  <div className={`text-[10px] italic ${pickForTeam.comment ? 'text-primary' : 'text-muted-foreground/30'}`}>
-                                                    {pickForTeam.comment || "Click to predict..."}
+                                                  <div className={`text-[10px] italic ${currentPrediction ? 'text-primary' : 'text-muted-foreground/30'}`}>
+                                                    {currentPrediction || "Click to predict..."}
                                                   </div>
                                                 )}
                                               </div>

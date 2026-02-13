@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
+import { getSleeperUser } from "@/lib/sleeperUser";
 import type { LeagueDataResponse, DraftPick, UpdateDraftPick } from "@shared/schema";
 
 // POST /api/league/:id/fetch - Trigger Sleeper sync
@@ -97,5 +98,28 @@ export function useUpdatePick() {
       // For safety, let's invalidate all league gets.
       queryClient.invalidateQueries({ queryKey: [api.league.get.path] });
     }
+  });
+}
+
+// POST /api/picks/:id/prediction - Save per-user prediction
+export function useSavePickPrediction(leagueId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, comment }: { id: number; comment: string }) => {
+      const url = buildUrl(api.picks.prediction.path, { id });
+      const user = getSleeperUser();
+      const userHeader = user?.userId ? { "X-Sleeper-User-Id": user.userId } : {};
+      const res = await fetch(url, {
+        method: api.picks.prediction.method,
+        headers: { "Content-Type": "application/json", ...userHeader },
+        body: JSON.stringify(api.picks.prediction.input.parse({ comment })),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to save prediction");
+      return api.picks.prediction.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.league.get.path, leagueId] });
+    },
   });
 }

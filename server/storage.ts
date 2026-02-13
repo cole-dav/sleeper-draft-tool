@@ -1,6 +1,6 @@
 import { db } from "./db";
 import {
-  leagues, rosters, users, draftPicks, leagueTeamOrder,
+  leagues, rosters, users, draftPicks, leagueTeamOrder, pickPredictions,
   type League, type Roster, type User, type DraftPick, type UpdateDraftPick,
   type InsertLeague, type InsertRoster, type InsertUser, type InsertDraftPick
 } from "@shared/schema";
@@ -23,9 +23,13 @@ export interface IStorage {
 
   // Picks
   getPicks(leagueId: string): Promise<DraftPick[]>;
+  getPickById(id: number): Promise<DraftPick | undefined>;
   upsertPick(pick: InsertDraftPick): Promise<DraftPick>;
   upsertPicks(picksList: InsertDraftPick[]): Promise<DraftPick[]>;
   updatePick(id: number, update: UpdateDraftPick): Promise<DraftPick | undefined>;
+  upsertPickPrediction(pickId: number, userId: string, comment: string): Promise<void>;
+  deletePickPrediction(pickId: number, userId: string): Promise<void>;
+  getPickPredictions(leagueId: string, userId: string): Promise<Record<number, string>>;
   
   // Clear existing picks for a league to avoid duplicates during re-fetch
   clearPicks(leagueId: string): Promise<void>;
@@ -105,6 +109,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(draftPicks).where(eq(draftPicks.leagueId, leagueId));
   }
 
+  async getPickById(id: number): Promise<DraftPick | undefined> {
+    const [result] = await db.select().from(draftPicks).where(eq(draftPicks.id, id));
+    return result;
+  }
+
   async clearPicks(leagueId: string): Promise<void> {
     await db.delete(draftPicks).where(eq(draftPicks.leagueId, leagueId));
   }
@@ -122,6 +131,48 @@ export class DatabaseStorage implements IStorage {
   async updatePick(id: number, update: UpdateDraftPick): Promise<DraftPick | undefined> {
     const [result] = await db.update(draftPicks).set(update).where(eq(draftPicks.id, id)).returning();
     return result;
+  }
+
+  async upsertPickPrediction(pickId: number, userId: string, comment: string): Promise<void> {
+    try {
+      await db.insert(pickPredictions)
+        .values({ pickId, userId, comment })
+        .onConflictDoUpdate({
+          target: [pickPredictions.pickId, pickPredictions.userId],
+          set: { comment },
+        });
+    } catch (err) {
+      if (this.isUndefinedTableError(err)) return;
+      throw err;
+    }
+  }
+
+  async deletePickPrediction(pickId: number, userId: string): Promise<void> {
+    try {
+      await db.delete(pickPredictions).where(and(eq(pickPredictions.pickId, pickId), eq(pickPredictions.userId, userId)));
+    } catch (err) {
+      if (this.isUndefinedTableError(err)) return;
+      throw err;
+    }
+  }
+
+  async getPickPredictions(leagueId: string, userId: string): Promise<Record<number, string>> {
+    try {
+      const rows = await db
+        .select({ pickId: pickPredictions.pickId, comment: pickPredictions.comment })
+        .from(pickPredictions)
+        .innerJoin(draftPicks, eq(pickPredictions.pickId, draftPicks.id))
+        .where(and(eq(draftPicks.leagueId, leagueId), eq(pickPredictions.userId, userId)));
+
+      const map: Record<number, string> = {};
+      for (const row of rows) {
+        map[row.pickId] = row.comment;
+      }
+      return map;
+    } catch (err) {
+      if (this.isUndefinedTableError(err)) return {};
+      throw err;
+    }
   }
 
   async getLeagueTeamOrder(leagueId: string): Promise<number[] | undefined> {

@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { getSleeperUser } from "./sleeperUser";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -12,9 +13,11 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const user = getSleeperUser();
+  const userHeader = user?.userId ? { "X-Sleeper-User-Id": user.userId } : {};
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: data ? { "Content-Type": "application/json", ...userHeader } : userHeader,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -29,8 +32,11 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
+    const user = getSleeperUser();
+    const userHeader = user?.userId ? { "X-Sleeper-User-Id": user.userId } : {};
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers: userHeader,
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

@@ -15,6 +15,21 @@ export const errorSchemas = {
 };
 
 export const api = {
+  user: {
+    lookup: {
+      method: 'GET' as const,
+      path: '/api/sleeper/user/:username',
+      responses: {
+        200: z.object({
+          userId: z.string(),
+          username: z.string(),
+          displayName: z.string().optional(),
+          avatar: z.string().optional(),
+        }),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
   league: {
     // Fetch from Sleeper and store/update in DB
     fetch: {
@@ -53,6 +68,18 @@ export const api = {
       input: updateDraftPickSchema,
       responses: {
         200: z.any(), // DraftPick
+        404: errorSchemas.notFound,
+      },
+    },
+    prediction: {
+      method: 'POST' as const,
+      path: '/api/picks/:id/prediction',
+      input: z.object({
+        comment: z.string(),
+      }),
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        401: z.object({ message: z.string() }),
         404: errorSchemas.notFound,
       },
     },

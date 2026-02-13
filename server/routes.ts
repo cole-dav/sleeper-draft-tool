@@ -199,6 +199,25 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // LOOKUP Sleeper User
+  app.get(api.user.lookup.path, async (req, res) => {
+    const username = req.params.username;
+    try {
+      const userRes = await fetch(`https://api.sleeper.app/v1/user/${encodeURIComponent(username)}`);
+      if (!userRes.ok) return res.status(404).json({ message: "User not found" });
+      const user = await userRes.json();
+      res.json({
+        userId: user.user_id,
+        username: user.username,
+        displayName: user.display_name,
+        avatar: user.avatar,
+      });
+    } catch (err: any) {
+      console.error("Error fetching sleeper user:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // FETCH League Data
   app.post(api.league.fetch.path, async (req, res) => {
     const leagueId = req.params.id;
@@ -343,6 +362,8 @@ export async function registerRoutes(
     const rosters = await storage.getRosters(leagueId);
     const users = await storage.getUsers(leagueId);
     const picks = await storage.getPicks(leagueId);
+    const userId = req.header("x-sleeper-user-id");
+    const pickPredictions = userId ? await storage.getPickPredictions(leagueId, userId) : undefined;
 
     const hasPlayers = rosters.some((r) => Array.isArray((r.settings as any)?.players) && (r.settings as any).players.length > 0);
     const playersMap = hasPlayers ? await getSleeperPlayersMap() : null;
@@ -415,6 +436,7 @@ export async function registerRoutes(
       users,
       picks,
       teamNeeds,
+      ...(pickPredictions && { pickPredictions }),
       ...(teamOrder && { teamOrder }),
       ...(Object.keys(teamPlayers).length > 0 && { teamPlayers }),
     });
@@ -439,6 +461,30 @@ export async function registerRoutes(
       const updated = await storage.updatePick(id, input);
       if (!updated) return res.status(404).json({ message: "Pick not found" });
       res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  // SAVE Pick Prediction (per user)
+  app.post(api.picks.prediction.path, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const userId = req.header("x-sleeper-user-id");
+    if (!userId) return res.status(401).json({ message: "Missing user context" });
+    try {
+      const input = api.picks.prediction.input.parse(req.body);
+      const pick = await storage.getPickById(id);
+      if (!pick) return res.status(404).json({ message: "Pick not found" });
+      const trimmed = input.comment.trim();
+      if (!trimmed) {
+        await storage.deletePickPrediction(id, userId);
+      } else {
+        await storage.upsertPickPrediction(id, userId, trimmed);
+      }
+      res.json({ success: true });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });

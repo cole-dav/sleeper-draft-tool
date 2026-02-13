@@ -6,12 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trophy, Search, Loader2, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
+import { setSleeperUser } from "@/lib/sleeperUser";
 
 export default function Home() {
   const [leagueId, setLeagueId] = useState("");
+  const [username, setUsername] = useState("");
   const [, setLocation] = useLocation();
   const fetchLeague = useFetchLeague();
   const [error, setError] = useState<string | null>(null);
+  const [isLookingUpUser, setIsLookingUpUser] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,10 +22,24 @@ export default function Home() {
     
     setError(null);
     try {
+      if (username.trim()) {
+        setIsLookingUpUser(true);
+        const res = await fetch(`/api/sleeper/user/${encodeURIComponent(username.trim())}`);
+        if (!res.ok) throw new Error("Sleeper username not found");
+        const user = await res.json();
+        setSleeperUser({
+          userId: user.userId,
+          username: user.username,
+          displayName: user.displayName,
+          avatar: user.avatar,
+        });
+      }
       await fetchLeague.mutateAsync(leagueId);
       setLocation(`/league/${leagueId}`);
     } catch (err: any) {
       setError(err.message || "Failed to fetch league");
+    } finally {
+      setIsLookingUpUser(false);
     }
   };
 
@@ -74,6 +91,18 @@ export default function Home() {
                     />
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <label htmlFor="username" className="text-sm font-medium text-foreground ml-1">
+                    Sleeper Username (optional)
+                  </label>
+                  <Input
+                    id="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="e.g. sleeperfan123"
+                    className="h-12 bg-background/50 border-white/10 focus:border-primary text-lg transition-all"
+                  />
+                </div>
 
                 {error && (
                   <motion.div 
@@ -87,13 +116,13 @@ export default function Home() {
 
                 <Button 
                   type="submit" 
-                  disabled={fetchLeague.isPending || !leagueId}
+                  disabled={fetchLeague.isPending || isLookingUpUser || !leagueId}
                   className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-primary to-primary/80 hover:to-primary shadow-lg shadow-primary/25 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
                 >
-                  {fetchLeague.isPending ? (
+                  {fetchLeague.isPending || isLookingUpUser ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Analyzing...
+                      {isLookingUpUser ? "Signing in..." : "Analyzing..."}
                     </>
                   ) : (
                     <>

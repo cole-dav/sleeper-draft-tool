@@ -48,6 +48,19 @@ export const draftPicks = pgTable("draft_picks", {
   comment: text("comment"), // User prediction/note
 });
 
+// Per-user predictions on picks
+export const pickPredictions = pgTable(
+  "pick_predictions",
+  {
+    pickId: integer("pick_id").notNull(),
+    userId: text("user_id").notNull(),
+    comment: text("comment").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.pickId, table.userId] }),
+  }),
+);
+
 // Zod Schemas
 export const insertLeagueSchema = createInsertSchema(leagues);
 export const insertRosterSchema = createInsertSchema(rosters);
@@ -61,11 +74,13 @@ export type Roster = typeof rosters.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type LeagueTeamOrder = typeof leagueTeamOrder.$inferSelect;
 export type DraftPick = typeof draftPicks.$inferSelect;
+export type PickPrediction = typeof pickPredictions.$inferSelect;
 export type UpdateDraftPick = z.infer<typeof updateDraftPickSchema>;
 export type InsertLeague = typeof leagues.$inferInsert;
 export type InsertRoster = typeof rosters.$inferInsert;
 export type InsertUser = typeof users.$inferInsert;
 export type InsertDraftPick = typeof draftPicks.$inferInsert;
+export type InsertPickPrediction = typeof pickPredictions.$inferInsert;
 
 export type TeamPlayerSummary = {
   id: string;
@@ -84,4 +99,5 @@ export type LeagueDataResponse = {
   teamNeeds: Record<number, { position: string; score: number }[]>; // rosterId -> needs
   teamOrder?: number[]; // saved column order (roster IDs), if set
   teamPlayers?: Record<number, TeamPlayerSummary[]>; // rosterId -> players (optional if not synced)
+  pickPredictions?: Record<number, string>; // pickId -> comment for current user
 };
