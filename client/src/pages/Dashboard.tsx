@@ -37,6 +37,9 @@ export default function Dashboard() {
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [signInHintPickId, setSignInHintPickId] = useState<number | null>(null);
   const signInHintTimeoutRef = useRef<number | null>(null);
+  const [localPredictions, setLocalPredictions] = useState<Record<number, string>>({});
+  const mergeInProgressRef = useRef(false);
+  const mergedKeyRef = useRef<string | null>(null);
   const userLeaguesQuery = useUserLeagues(currentUser?.userId ?? null);
   const fetchLeague = useFetchLeague();
   const [switchingLeagueId, setSwitchingLeagueId] = useState("");
@@ -120,6 +123,47 @@ export default function Dashboard() {
     teamOrderInitialized.current = false;
     setTeamOrder([]);
   }, [leagueId]);
+
+  useEffect(() => {
+    const key = `localPredictions:${leagueId}`;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<number, string>;
+        setLocalPredictions(parsed ?? {});
+      } else {
+        setLocalPredictions({});
+      }
+    } catch {
+      setLocalPredictions({});
+    }
+  }, [leagueId]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const key = `${currentUser.userId}:${leagueId}`;
+    if (mergedKeyRef.current === key) return;
+    if (mergeInProgressRef.current) return;
+    const entries = Object.entries(localPredictions).filter(([, v]) => String(v || "").trim().length > 0);
+    if (entries.length === 0) return;
+
+    mergeInProgressRef.current = true;
+    Promise.all(
+      entries.map(([pickId, comment]) =>
+        savePredictionMutation.mutateAsync({ id: Number(pickId), comment: String(comment) })
+      )
+    )
+      .then(() => {
+        mergedKeyRef.current = key;
+        setLocalPredictions({});
+        try {
+          window.localStorage.removeItem(`localPredictions:${leagueId}`);
+        } catch {}
+      })
+      .finally(() => {
+        mergeInProgressRef.current = false;
+      });
+  }, [currentUser, leagueId, localPredictions, savePredictionMutation]);
 
   useEffect(() => {
     if (!savePredictionMutation.isSuccess) return;
@@ -564,7 +608,9 @@ export default function Dashboard() {
                                   {teamsInOrder.map((team) => {
                                     // The pick in this column belongs to the original owner (the team in the header)
                                     const pickForTeam = roundPicks.find(p => p.rosterId === team.rosterId);
-                                    const currentPrediction = pickForTeam ? (pickPredictions[pickForTeam.id] || "") : "";
+                                    const currentPrediction = pickForTeam
+                                      ? (currentUser ? (pickPredictions[pickForTeam.id] || "") : (localPredictions[pickForTeam.id] || ""))
+                                      : "";
                                     const isTransferred = pickForTeam?.ownerId && pickForTeam.ownerId !== team.rosterId;
                                     const currentOwnerRoster = rosters.find(r => r.rosterId === pickForTeam?.ownerId);
                                     const currentOwner = isTransferred ? getUser(currentOwnerRoster?.ownerId || null) : null;
@@ -616,6 +662,17 @@ export default function Dashboard() {
                                                     onKeyDown={(e) => {
                                                       if (e.key === 'Enter') {
                                                         if (!currentUser) {
+                                                          const trimmed = commentValue.trim();
+                                                          const next = { ...localPredictions };
+                                                          if (trimmed) {
+                                                            next[pickForTeam.id] = trimmed;
+                                                          } else {
+                                                            delete next[pickForTeam.id];
+                                                          }
+                                                          setLocalPredictions(next);
+                                                          try {
+                                                            window.localStorage.setItem(`localPredictions:${leagueId}`, JSON.stringify(next));
+                                                          } catch {}
                                                           setEditingPickId(null);
                                                           setCommentValue("");
                                                           setSignInHintPickId(pickForTeam.id);
@@ -638,6 +695,17 @@ export default function Dashboard() {
                                                     }}
                                                     onBlur={() => {
                                                       if (!currentUser) {
+                                                        const trimmed = commentValue.trim();
+                                                        const next = { ...localPredictions };
+                                                        if (trimmed) {
+                                                          next[pickForTeam.id] = trimmed;
+                                                        } else {
+                                                          delete next[pickForTeam.id];
+                                                        }
+                                                        setLocalPredictions(next);
+                                                        try {
+                                                          window.localStorage.setItem(`localPredictions:${leagueId}`, JSON.stringify(next));
+                                                        } catch {}
                                                         setEditingPickId(null);
                                                         setCommentValue("");
                                                         setSignInHintPickId(pickForTeam.id);
