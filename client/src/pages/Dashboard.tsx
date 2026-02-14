@@ -1,5 +1,5 @@
-import { useParams, Link } from "wouter";
-import { useLeague, useSavePickPrediction, useUpdateLeagueTeamOrder } from "@/hooks/use-league";
+import { useParams, Link, useLocation } from "wouter";
+import { useFetchLeague, useLeague, useSavePickPrediction, useUpdateLeagueTeamOrder, useUserLeagues } from "@/hooks/use-league";
 import { PickCard } from "@/components/PickCard";
 import { TeamNeedsCard } from "@/components/TeamNeedsCard";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 export default function Dashboard() {
   const params = useParams();
   const leagueId = params.id!;
+  const [, setLocation] = useLocation();
   const { data, isLoading, error, refetch } = useLeague(leagueId);
   const [selectedSeasons, setSelectedSeasons] = useState<Set<string>>(new Set());
   const [draggedTeam, setDraggedTeam] = useState<number | null>(null);
@@ -159,6 +160,20 @@ export default function Dashboard() {
     clearSleeperUser();
     setCurrentUser(null);
     setShowLoginPrompt(true);
+  };
+
+  const handleLeagueSwitch = async (nextId: string) => {
+    if (!nextId || nextId === leagueId) return;
+    setSwitchError(null);
+    setSwitchingLeagueId(nextId);
+    try {
+      await fetchLeague.mutateAsync(nextId);
+      setLocation(`/league/${nextId}`);
+    } catch (err: any) {
+      setSwitchError(err.message || "Failed to switch league");
+    } finally {
+      setSwitchingLeagueId("");
+    }
   };
 
   if (isLoading) return <DashboardSkeleton />;
@@ -364,12 +379,31 @@ export default function Dashboard() {
                   Sign In
                 </Button>
               )}
+              {currentUser && (userLeaguesQuery.data?.length ?? 0) > 0 && (
+                <div className="hidden md:flex items-center gap-2">
+                  <select
+                    value={leagueId}
+                    onChange={(e) => handleLeagueSwitch(e.target.value)}
+                    className="h-8 text-xs bg-background/60 border border-white/10 rounded-md px-2"
+                    disabled={!!switchingLeagueId}
+                  >
+                    {userLeaguesQuery.data?.map((l) => (
+                      <option key={l.leagueId} value={l.leagueId}>
+                        {l.name} ({l.season})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <Button onClick={() => refetch()} variant="outline" size="sm" className="gap-2 border-primary/20 hover:bg-primary/10 text-primary">
                 <RefreshCw className="h-4 w-4" />
                 Sync
               </Button>
             </div>
           </div>
+          {switchError && (
+            <div className="mt-2 text-xs text-destructive">{switchError}</div>
+          )}
         </div>
       </header>
 
@@ -770,3 +804,7 @@ function DashboardSkeleton() {
     </div>
   );
 }
+  const userLeaguesQuery = useUserLeagues(currentUser?.userId ?? null);
+  const fetchLeague = useFetchLeague();
+  const [switchingLeagueId, setSwitchingLeagueId] = useState("");
+  const [switchError, setSwitchError] = useState<string | null>(null);

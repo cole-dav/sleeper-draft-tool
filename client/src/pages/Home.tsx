@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { useFetchLeague } from "@/hooks/use-league";
+import { useFetchLeague, useUserLeagues } from "@/hooks/use-league";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Trophy, Search, Loader2, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
-import { setSleeperUser } from "@/lib/sleeperUser";
+import { getSleeperUser, setSleeperUser, clearSleeperUser } from "@/lib/sleeperUser";
 
 export default function Home() {
   const [leagueId, setLeagueId] = useState("");
@@ -15,6 +15,9 @@ export default function Home() {
   const fetchLeague = useFetchLeague();
   const [error, setError] = useState<string | null>(null);
   const [isLookingUpUser, setIsLookingUpUser] = useState(false);
+  const [currentUser, setCurrentUser] = useState(() => getSleeperUser());
+  const leaguesQuery = useUserLeagues(currentUser?.userId ?? null);
+  const [openError, setOpenError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +44,12 @@ export default function Home() {
           displayName: user.displayName,
           avatar: user.avatar,
         });
+        setCurrentUser({
+          userId: user.userId,
+          username: user.username,
+          displayName: user.displayName,
+          avatar: user.avatar,
+        });
       }
       await fetchLeague.mutateAsync(leagueId);
       setLocation(`/league/${leagueId}`);
@@ -49,6 +58,21 @@ export default function Home() {
     } finally {
       setIsLookingUpUser(false);
     }
+  };
+
+  const openLeague = async (id: string) => {
+    setOpenError(null);
+    try {
+      await fetchLeague.mutateAsync(id);
+      setLocation(`/league/${id}`);
+    } catch (err: any) {
+      setOpenError(err.message || "Failed to open league");
+    }
+  };
+
+  const handleLogout = () => {
+    clearSleeperUser();
+    setCurrentUser(null);
   };
 
   return (
@@ -139,6 +163,46 @@ export default function Home() {
                   )}
                 </Button>
               </form>
+              {currentUser && (
+                <div className="mt-6 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold">
+                      Leagues for {currentUser.displayName || currentUser.username}
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={handleLogout}>
+                      Sign out
+                    </Button>
+                  </div>
+                  {leaguesQuery.isLoading && (
+                    <div className="text-xs text-muted-foreground">Loading leagues...</div>
+                  )}
+                  {leaguesQuery.isError && (
+                    <div className="text-xs text-destructive">Failed to load leagues</div>
+                  )}
+                  {!leaguesQuery.isLoading && leaguesQuery.data?.length === 0 && (
+                    <div className="text-xs text-muted-foreground">No leagues found for current/previous season.</div>
+                  )}
+                  <div className="space-y-2">
+                    {(leaguesQuery.data ?? []).map((league) => (
+                      <button
+                        key={league.leagueId}
+                        type="button"
+                        onClick={() => openLeague(league.leagueId)}
+                        className="w-full text-left flex items-center justify-between gap-3 p-3 rounded-lg border border-white/10 bg-background/40 hover:border-white/20 transition"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold truncate">{league.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Season {league.season}{league.status ? ` • ${league.status}` : ""}
+                          </div>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                  {openError && <div className="text-xs text-destructive">{openError}</div>}
+                </div>
+              )}
             </CardContent>
           </Card>
         </motion.div>

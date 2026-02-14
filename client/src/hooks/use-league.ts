@@ -53,6 +53,22 @@ export function useLeague(id: string) {
   });
 }
 
+// GET /api/sleeper/user/:userId/leagues - List user's leagues (current + previous season by default)
+export function useUserLeagues(userId: string | null, seasons?: string[]) {
+  return useQuery({
+    queryKey: [api.user.leagues.path, userId, seasons?.join(",") ?? ""],
+    queryFn: async () => {
+      if (!userId) return [];
+      const params = seasons?.length ? `?seasons=${encodeURIComponent(seasons.join(","))}` : "";
+      const url = buildUrl(api.user.leagues.path, { userId }) + params;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch leagues");
+      return api.user.leagues.responses[200].parse(await res.json());
+    },
+    enabled: !!userId,
+  });
+}
+
 // PUT /api/league/:id/team-order - Save draft board column order (sticky)
 export function useUpdateLeagueTeamOrder() {
   const queryClient = useQueryClient();

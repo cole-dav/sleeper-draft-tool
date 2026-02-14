@@ -218,6 +218,53 @@ export async function registerRoutes(
     }
   });
 
+  // FETCH Sleeper Leagues for a User
+  app.get(api.user.leagues.path, async (req, res) => {
+    const userId = req.params.userId;
+    try {
+      const seasonsParam = req.query.seasons ? String(req.query.seasons) : "";
+      let seasons = seasonsParam.split(",").map((s) => s.trim()).filter(Boolean);
+
+      if (seasons.length === 0) {
+        const stateRes = await fetch("https://api.sleeper.app/v1/state/nfl");
+        if (!stateRes.ok) throw new Error("Failed to fetch NFL state");
+        const state = await stateRes.json();
+        const current = String(state?.season ?? new Date().getFullYear());
+        const previous = String(Number(current) - 1);
+        seasons = [current, previous];
+      }
+
+      const leagues: any[] = [];
+      for (const season of seasons) {
+        const leaguesRes = await fetch(`https://api.sleeper.app/v1/user/${encodeURIComponent(userId)}/leagues/nfl/${encodeURIComponent(season)}`);
+        if (!leaguesRes.ok) continue;
+        const data = await leaguesRes.json();
+        if (Array.isArray(data)) leagues.push(...data.map((l: any) => ({ ...l, season: String(l.season ?? season) })));
+      }
+
+      const byId = new Map<string, any>();
+      for (const league of leagues) {
+        const id = String(league.league_id);
+        if (!id || byId.has(id)) continue;
+        byId.set(id, league);
+      }
+
+      const result = Array.from(byId.values()).map((l) => ({
+        leagueId: String(l.league_id),
+        name: String(l.name ?? "Untitled League"),
+        season: String(l.season ?? ""),
+        totalRosters: Number(l.total_rosters ?? undefined),
+        status: l.status ? String(l.status) : undefined,
+        avatar: l.avatar ?? null,
+      }));
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Error fetching sleeper leagues:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // FETCH League Data
   app.post(api.league.fetch.path, async (req, res) => {
     const leagueId = req.params.id;

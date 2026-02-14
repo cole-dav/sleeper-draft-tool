@@ -204,6 +204,7 @@ function jsonResponse(statusCode: number, body: unknown) {
 const handler: Handler = async (event) => {
   const path = event.rawUrl ? new URL(event.rawUrl).pathname : event.path;
   const sleeperUserMatch = path.match(/^\/api\/sleeper\/user\/([^/]+)$/);
+  const sleeperUserLeaguesMatch = path.match(/^\/api\/sleeper\/user\/([^/]+)\/leagues$/);
   const pathMatch = path.match(/^\/api\/league\/([^/]+)\/fetch$/);
   const getMatch = path.match(/^\/api\/league\/([^/]+)$/);
   const teamOrderMatch = path.match(/^\/api\/league\/([^/]+)\/team-order$/);
@@ -222,6 +223,46 @@ const handler: Handler = async (event) => {
         displayName: user.display_name,
         avatar: user.avatar,
       });
+    }
+
+    if (event.httpMethod === "GET" && sleeperUserLeaguesMatch) {
+      const userId = decodeURIComponent(sleeperUserLeaguesMatch[1]);
+      const seasonsParam = event.queryStringParameters?.seasons || "";
+      let seasons = seasonsParam.split(",").map((s) => s.trim()).filter(Boolean);
+      if (seasons.length === 0) {
+        const stateRes = await fetch("https://api.sleeper.app/v1/state/nfl");
+        if (!stateRes.ok) throw new Error("Failed to fetch NFL state");
+        const state = await stateRes.json();
+        const current = String(state?.season ?? new Date().getFullYear());
+        const previous = String(Number(current) - 1);
+        seasons = [current, previous];
+      }
+
+      const leagues: any[] = [];
+      for (const season of seasons) {
+        const leaguesRes = await fetch(`https://api.sleeper.app/v1/user/${encodeURIComponent(userId)}/leagues/nfl/${encodeURIComponent(season)}`);
+        if (!leaguesRes.ok) continue;
+        const data = await leaguesRes.json();
+        if (Array.isArray(data)) leagues.push(...data.map((l: any) => ({ ...l, season: String(l.season ?? season) })));
+      }
+
+      const byId = new Map<string, any>();
+      for (const league of leagues) {
+        const id = String(league.league_id);
+        if (!id || byId.has(id)) continue;
+        byId.set(id, league);
+      }
+
+      const result = Array.from(byId.values()).map((l) => ({
+        leagueId: String(l.league_id),
+        name: String(l.name ?? "Untitled League"),
+        season: String(l.season ?? ""),
+        totalRosters: Number(l.total_rosters ?? undefined),
+        status: l.status ? String(l.status) : undefined,
+        avatar: l.avatar ?? null,
+      }));
+
+      return jsonResponse(200, result);
     }
 
     if (event.httpMethod === "POST" && pathMatch) {

@@ -29,6 +29,21 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    leagues: {
+      method: 'GET' as const,
+      path: '/api/sleeper/user/:userId/leagues',
+      responses: {
+        200: z.array(z.object({
+          leagueId: z.string(),
+          name: z.string(),
+          season: z.string(),
+          totalRosters: z.number().optional(),
+          status: z.string().optional(),
+          avatar: z.string().nullable().optional(),
+        })),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   league: {
     // Fetch from Sleeper and store/update in DB
