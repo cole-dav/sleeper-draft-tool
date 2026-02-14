@@ -21,10 +21,15 @@ export default function Home() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!leagueId) return;
+    if (!leagueId && !username.trim()) return;
     
     setError(null);
     try {
+      if (leagueId) {
+        await fetchLeague.mutateAsync(leagueId);
+        setLocation(`/league/${leagueId}`);
+        return;
+      }
       if (username.trim()) {
         setIsLookingUpUser(true);
         const lookup = username.trim();
@@ -51,8 +56,6 @@ export default function Home() {
           avatar: user.avatar,
         });
       }
-      await fetchLeague.mutateAsync(leagueId);
-      setLocation(`/league/${leagueId}`);
     } catch (err: any) {
       setError(err.message || "Failed to fetch league");
     } finally {
@@ -125,7 +128,7 @@ export default function Home() {
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="username" className="text-sm font-medium text-foreground ml-1">
-                    Sleeper Username (optional)
+                    Sleeper Username
                   </label>
                   <Input
                     id="username"
@@ -148,7 +151,7 @@ export default function Home() {
 
                 <Button 
                   type="submit" 
-                  disabled={fetchLeague.isPending || isLookingUpUser || !leagueId}
+                  disabled={fetchLeague.isPending || isLookingUpUser || (!leagueId && !username.trim())}
                   className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-primary to-primary/80 hover:to-primary shadow-lg shadow-primary/25 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
                 >
                   {fetchLeague.isPending || isLookingUpUser ? (

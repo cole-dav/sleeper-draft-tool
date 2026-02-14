@@ -35,6 +35,8 @@ export default function Dashboard() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [signInHintPickId, setSignInHintPickId] = useState<number | null>(null);
+  const signInHintTimeoutRef = useRef<number | null>(null);
   const userLeaguesQuery = useUserLeagues(currentUser?.userId ?? null);
   const fetchLeague = useFetchLeague();
   const [switchingLeagueId, setSwitchingLeagueId] = useState("");
@@ -125,6 +127,14 @@ export default function Dashboard() {
     setCommentValue("");
     savePredictionMutation.reset();
   }, [savePredictionMutation.isSuccess]);
+
+  useEffect(() => {
+    return () => {
+      if (signInHintTimeoutRef.current !== null) {
+        window.clearTimeout(signInHintTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleLogin = async () => {
     if (!loginUsername.trim()) return;
@@ -592,10 +602,6 @@ export default function Dashboard() {
                                                 className="mt-2 min-h-[1.5rem] flex items-center justify-center cursor-text"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
-                                                  if (!currentUser) {
-                                                    setShowLoginPrompt(true);
-                                                    return;
-                                                  }
                                                   setEditingPickId(pickForTeam.id);
                                                   setCommentValue(currentPrediction);
                                                 }}
@@ -609,6 +615,18 @@ export default function Dashboard() {
                                                     className="h-6 text-[10px] py-0 px-1 bg-background/50 border-white/10"
                                                     onKeyDown={(e) => {
                                                       if (e.key === 'Enter') {
+                                                        if (!currentUser) {
+                                                          setEditingPickId(null);
+                                                          setCommentValue("");
+                                                          setSignInHintPickId(pickForTeam.id);
+                                                          if (signInHintTimeoutRef.current !== null) {
+                                                            window.clearTimeout(signInHintTimeoutRef.current);
+                                                          }
+                                                          signInHintTimeoutRef.current = window.setTimeout(() => {
+                                                            setSignInHintPickId(null);
+                                                          }, 2000);
+                                                          return;
+                                                        }
                                                         if (commentValue !== currentPrediction) {
                                                           savePredictionMutation.mutate({ id: pickForTeam.id, comment: commentValue });
                                                         } else {
@@ -619,6 +637,18 @@ export default function Dashboard() {
                                                       }
                                                     }}
                                                     onBlur={() => {
+                                                      if (!currentUser) {
+                                                        setEditingPickId(null);
+                                                        setCommentValue("");
+                                                        setSignInHintPickId(pickForTeam.id);
+                                                        if (signInHintTimeoutRef.current !== null) {
+                                                          window.clearTimeout(signInHintTimeoutRef.current);
+                                                        }
+                                                        signInHintTimeoutRef.current = window.setTimeout(() => {
+                                                          setSignInHintPickId(null);
+                                                        }, 2000);
+                                                        return;
+                                                      }
                                                       if (commentValue !== currentPrediction) {
                                                         savePredictionMutation.mutate({ id: pickForTeam.id, comment: commentValue });
                                                       } else {
@@ -628,7 +658,7 @@ export default function Dashboard() {
                                                   />
                                                 ) : (
                                                   <div className={`text-[10px] italic ${currentPrediction ? 'text-primary' : 'text-muted-foreground/30'}`}>
-                                                    {currentPrediction || "Click to predict..."}
+                                                    {currentPrediction || (signInHintPickId === pickForTeam.id ? "Sign in to save" : "Click to predict...")}
                                                   </div>
                                                 )}
                                               </div>
