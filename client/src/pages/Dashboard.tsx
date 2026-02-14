@@ -35,6 +35,10 @@ export default function Dashboard() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const userLeaguesQuery = useUserLeagues(currentUser?.userId ?? null);
+  const fetchLeague = useFetchLeague();
+  const [switchingLeagueId, setSwitchingLeagueId] = useState("");
+  const [switchError, setSwitchError] = useState<string | null>(null);
 
   const savePredictionMutation = useSavePickPrediction(leagueId);
 
@@ -804,7 +808,3 @@ function DashboardSkeleton() {
     </div>
   );
 }
-  const userLeaguesQuery = useUserLeagues(currentUser?.userId ?? null);
-  const fetchLeague = useFetchLeague();
-  const [switchingLeagueId, setSwitchingLeagueId] = useState("");
-  const [switchError, setSwitchError] = useState<string | null>(null);
