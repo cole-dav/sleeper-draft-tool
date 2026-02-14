@@ -39,7 +39,9 @@ export function useLeague(id: string) {
     queryKey: [api.league.get.path, id],
     queryFn: async () => {
       const url = buildUrl(api.league.get.path, { id });
-      const res = await fetch(url, { credentials: "include" });
+      const user = getSleeperUser();
+      const userHeader = user?.userId ? { "X-Sleeper-User-Id": user.userId } : {};
+      const res = await fetch(url, { credentials: "include", headers: userHeader });
       
       if (!res.ok) {
         if (res.status === 404) throw new Error("League not found in database");

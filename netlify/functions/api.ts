@@ -393,7 +393,7 @@ const handler: Handler = async (event) => {
       const rosters = await storage.getRosters(leagueId);
       const users = await storage.getUsers(leagueId);
       const picks = await storage.getPicks(leagueId);
-      const userId = event.headers?.["x-sleeper-user-id"];
+      const userId = event.headers?.["x-sleeper-user-id"] || event.headers?.["X-Sleeper-User-Id"];
       const pickPredictions = userId ? await storage.getPickPredictions(leagueId, userId) : undefined;
       const hasPlayers = rosters.some((r) => Array.isArray((r.settings as any)?.players) && (r.settings as any).players.length > 0);
       const playersMap = hasPlayers ? await getSleeperPlayersMap() : null;
@@ -492,7 +492,7 @@ const handler: Handler = async (event) => {
 
     if (event.httpMethod === "POST" && pickPredictionMatch) {
       const id = parseInt(pickPredictionMatch[1], 10);
-      const userId = event.headers?.["x-sleeper-user-id"];
+      const userId = event.headers?.["x-sleeper-user-id"] || event.headers?.["X-Sleeper-User-Id"];
       if (!userId) return jsonResponse(401, { message: "Missing user context" });
       const body = event.body ? JSON.parse(event.body) : {};
       const input = api.picks.prediction.input.parse(body);
